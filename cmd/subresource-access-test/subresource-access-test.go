@@ -37,13 +37,21 @@ func getGenericRequest(resource string, restClient *rest.RESTClient) *rest.Reque
 	return restClient.Get().Resource(resource)
 }
 
-func getExpandSpecRequest(restClient *rest.RESTClient) *rest.Request {
+func getExpandSpecRequest(restClient *rest.RESTClient, namespace string) *rest.Request {
 	vm := &v1.VirtualMachine{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "vm-test",
-			Namespace: "default",
+			Namespace: namespace,
 		},
-		Spec: v1.VirtualMachineSpec{},
+		Spec: v1.VirtualMachineSpec{
+			Template: &v1.VirtualMachineInstanceTemplateSpec{
+				Spec: v1.VirtualMachineInstanceSpec{
+					Domain: v1.DomainSpec{
+						Devices: v1.Devices{},
+					},
+				},
+			},
+		},
 	}
 	vm.SetGroupVersionKind(v1.VirtualMachineGroupVersionKind)
 
@@ -68,7 +76,7 @@ func main() {
 
 		var request *rest.Request
 		if resource == expandSpec {
-			request = getExpandSpecRequest(restClient)
+			request = getExpandSpecRequest(restClient, namespace)
 		} else {
 			request = getGenericRequest(resource, restClient)
 		}
