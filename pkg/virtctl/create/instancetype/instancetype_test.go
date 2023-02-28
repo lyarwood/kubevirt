@@ -20,15 +20,14 @@ package instancetype_test
 
 import (
 	"fmt"
-	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/runtime"
 	v1 "kubevirt.io/api/core/v1"
-	apiinstancetype "kubevirt.io/api/instancetype"
 	instancetypev1alpha2 "kubevirt.io/api/instancetype/v1alpha2"
-	"sigs.k8s.io/yaml"
+	generatedscheme "kubevirt.io/client-go/generated/kubevirt/clientset/versioned/scheme"
 
 	. "kubevirt.io/kubevirt/pkg/virtctl/create/instancetype"
 	"kubevirt.io/kubevirt/tests/clientcmd"
@@ -62,7 +61,7 @@ var _ = Describe("create", func() {
 			)()
 			Expect(err).ToNot(HaveOccurred())
 
-			instancetypeSpec = getInstancetypeSpec(namespaced, bytes)
+			instancetypeSpec = getInstancetypeSpec(bytes)
 			Expect(instancetypeSpec.CPU.Guest).To(Equal(uint32(2)))
 			Expect(instancetypeSpec.Memory.Guest).To(Equal(resource.MustParse("256Mi")))
 		},
@@ -78,7 +77,7 @@ var _ = Describe("create", func() {
 			)()
 			Expect(err).ToNot(HaveOccurred())
 
-			instancetypeSpec = getInstancetypeSpec(namespaced, bytes)
+			instancetypeSpec = getInstancetypeSpec(bytes)
 			Expect(instancetypeSpec.GPUs).To(HaveLen(1))
 			Expect(instancetypeSpec.GPUs[0].Name).To(Equal("gpu1"))
 			Expect(instancetypeSpec.GPUs[0].DeviceName).To(Equal("nvidia"))
@@ -95,7 +94,7 @@ var _ = Describe("create", func() {
 			)()
 			Expect(err).ToNot(HaveOccurred())
 
-			instancetypeSpec = getInstancetypeSpec(namespaced, bytes)
+			instancetypeSpec = getInstancetypeSpec(bytes)
 			Expect(instancetypeSpec.HostDevices).To(HaveLen(1))
 			Expect(instancetypeSpec.HostDevices[0].Name).To(Equal("device1"))
 			Expect(instancetypeSpec.HostDevices[0].DeviceName).To(Equal("intel"))
@@ -112,7 +111,7 @@ var _ = Describe("create", func() {
 			)()
 			Expect(err).ToNot(HaveOccurred())
 
-			instancetypeSpec := getInstancetypeSpec(namespaced, bytes)
+			instancetypeSpec := getInstancetypeSpec(bytes)
 			Expect(*instancetypeSpec.IOThreadsPolicy).To(Equal(policy))
 
 		},
@@ -166,28 +165,15 @@ func setFlag(flag, parameter string) string {
 	return fmt.Sprintf("--%s=%s", flag, parameter)
 }
 
-func getInstancetypeSpec(namespaced string, bytes []byte) *instancetypev1alpha2.VirtualMachineInstancetypeSpec {
-	if namespaced == "" {
-		return unmarshalClusterInstanceType(bytes)
+func getInstancetypeSpec(bytes []byte) *instancetypev1alpha2.VirtualMachineInstancetypeSpec {
+	decodedObj, err := runtime.Decode(generatedscheme.Codecs.UniversalDeserializer(), bytes)
+	Expect(err).ToNot(HaveOccurred())
+	switch obj := decodedObj.(type) {
+	case *instancetypev1alpha2.VirtualMachineInstancetype:
+		return &obj.Spec
+	case *instancetypev1alpha2.VirtualMachineClusterInstancetype:
+		return &obj.Spec
+	default:
+		panic("unable to find spec")
 	}
-
-	return unmarshalInstanceType(bytes)
-}
-
-func unmarshalInstanceType(bytes []byte) *instancetypev1alpha2.VirtualMachineInstancetypeSpec {
-	instancetype := &instancetypev1alpha2.VirtualMachineInstancetype{}
-	Expect(yaml.Unmarshal(bytes, instancetype)).To(Succeed())
-	Expect(strings.ToLower(instancetype.Kind)).To(Equal(apiinstancetype.SingularResourceName))
-	Expect(instancetype.APIVersion).To(Equal(instancetypev1alpha2.SchemeGroupVersion.String()))
-
-	return &instancetype.Spec
-}
-
-func unmarshalClusterInstanceType(bytes []byte) *instancetypev1alpha2.VirtualMachineInstancetypeSpec {
-	clusterInstancetype := &instancetypev1alpha2.VirtualMachineClusterInstancetype{}
-	Expect(yaml.Unmarshal(bytes, clusterInstancetype)).To(Succeed())
-	Expect(strings.ToLower(clusterInstancetype.Kind)).To(Equal(apiinstancetype.ClusterSingularResourceName))
-	Expect(clusterInstancetype.APIVersion).To(Equal(instancetypev1alpha2.SchemeGroupVersion.String()))
-
-	return &clusterInstancetype.Spec
 }
