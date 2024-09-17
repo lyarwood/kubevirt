@@ -225,6 +225,7 @@ lint:
 	  pkg/network/pod/annotations/... \
 	  pkg/network/vmicontroller/... \
 	  pkg/storage/pod/annotations/... \
+	  pkg/preference/... \
 	  pkg/virtctl/credentials/... \
 	  tests/console/... \
 	  tests/instancetype/... \
