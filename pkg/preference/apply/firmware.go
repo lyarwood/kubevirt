@@ -1,4 +1,4 @@
-//nolint:gocyclo,lll
+//nolint:gocyclo
 package apply
 
 import (
@@ -25,7 +25,10 @@ func applyFirmwarePreferences(preferenceSpec *v1beta1.VirtualMachinePreferenceSp
 		vmiFirmware.Bootloader = &virtv1.Bootloader{}
 	}
 
-	if firmware.PreferredUseBios != nil && *firmware.PreferredUseBios && vmiFirmware.Bootloader.BIOS == nil && vmiFirmware.Bootloader.EFI == nil {
+	if firmware.PreferredUseBios != nil &&
+		*firmware.PreferredUseBios &&
+		vmiFirmware.Bootloader.BIOS == nil &&
+		vmiFirmware.Bootloader.EFI == nil {
 		vmiFirmware.Bootloader.BIOS = &virtv1.BIOS{}
 	}
 
@@ -39,7 +42,10 @@ func applyFirmwarePreferences(preferenceSpec *v1beta1.VirtualMachinePreferenceSp
 		return
 	}
 
-	if firmware.PreferredUseEfi != nil && *firmware.PreferredUseEfi && vmiFirmware.Bootloader.EFI == nil && vmiFirmware.Bootloader.BIOS == nil {
+	if firmware.PreferredUseEfi != nil &&
+		*firmware.PreferredUseEfi &&
+		vmiFirmware.Bootloader.EFI == nil &&
+		vmiFirmware.Bootloader.BIOS == nil {
 		vmiFirmware.Bootloader.EFI = &virtv1.EFI{}
 	}
 

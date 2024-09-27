@@ -1,4 +1,3 @@
-//nolint:lll
 package apply
 
 import (
@@ -15,8 +14,10 @@ func applyClockPreferences(preferenceSpec *v1beta1.VirtualMachinePreferenceSpec,
 		vmiSpec.Domain.Clock = &virtv1.Clock{}
 	}
 
-	// We don't want to allow a partial overwrite here as that could lead to some unexpected behavior for users so only replace when nothing is set
-	if preferenceSpec.Clock.PreferredClockOffset != nil && vmiSpec.Domain.Clock.ClockOffset.UTC == nil && vmiSpec.Domain.Clock.ClockOffset.Timezone == nil {
+	// We don't want to allow a partial overwrite here so only replace when nothing is set
+	if preferenceSpec.Clock.PreferredClockOffset != nil &&
+		vmiSpec.Domain.Clock.ClockOffset.UTC == nil &&
+		vmiSpec.Domain.Clock.ClockOffset.Timezone == nil {
 		vmiSpec.Domain.Clock.ClockOffset = *preferenceSpec.Clock.PreferredClockOffset.DeepCopy()
 	}
 

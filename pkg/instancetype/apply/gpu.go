@@ -1,4 +1,3 @@
-//nolint:lll
 package apply
 
 import (
@@ -8,7 +7,11 @@ import (
 	v1beta1 "kubevirt.io/api/instancetype/v1beta1"
 )
 
-func applyGPUs(field *k8sfield.Path, instancetypeSpec *v1beta1.VirtualMachineInstancetypeSpec, vmiSpec *virtv1.VirtualMachineInstanceSpec) Conflicts {
+func applyGPUs(
+	field *k8sfield.Path,
+	instancetypeSpec *v1beta1.VirtualMachineInstancetypeSpec,
+	vmiSpec *virtv1.VirtualMachineInstanceSpec,
+) Conflicts {
 	if len(instancetypeSpec.GPUs) == 0 {
 		return nil
 	}

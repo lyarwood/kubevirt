@@ -1,4 +1,3 @@
-//nolint:lll
 package apply
 
 import (
@@ -12,7 +11,11 @@ import (
 
 type VMIApplier struct{}
 
-func (a *VMIApplier) Apply(preferenceSpec *v1beta1.VirtualMachinePreferenceSpec, vmiSpec *virtv1.VirtualMachineInstanceSpec, vmiMetadata *metav1.ObjectMeta) {
+func (a *VMIApplier) Apply(
+	preferenceSpec *v1beta1.VirtualMachinePreferenceSpec,
+	vmiSpec *virtv1.VirtualMachineInstanceSpec,
+	vmiMetadata *metav1.ObjectMeta,
+) {
 	if preferenceSpec == nil {
 		return
 	}

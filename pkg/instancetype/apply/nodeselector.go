@@ -1,4 +1,3 @@
-//nolint:lll
 package apply
 
 import (
@@ -10,7 +9,11 @@ import (
 	v1beta1 "kubevirt.io/api/instancetype/v1beta1"
 )
 
-func applyNodeSelector(field *k8sfield.Path, instancetypeSpec *v1beta1.VirtualMachineInstancetypeSpec, vmiSpec *virtv1.VirtualMachineInstanceSpec) Conflicts {
+func applyNodeSelector(
+	field *k8sfield.Path,
+	instancetypeSpec *v1beta1.VirtualMachineInstancetypeSpec,
+	vmiSpec *virtv1.VirtualMachineInstanceSpec,
+) Conflicts {
 	if instancetypeSpec.NodeSelector == nil {
 		return nil
 	}

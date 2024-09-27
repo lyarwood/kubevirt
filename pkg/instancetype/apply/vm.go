@@ -1,4 +1,3 @@
-//nolint:lll
 package apply
 
 import (
@@ -37,7 +36,13 @@ func (a *VMApplier) Apply(vm *virtv1.VirtualMachine) error {
 	if err != nil {
 		return err
 	}
-	if conflicts := a.vmiApplier.Apply(k8sfield.NewPath("spec"), instancetypeSpec, preferenceSpec, &vm.Spec.Template.Spec, &vm.ObjectMeta); len(conflicts) > 0 {
+	if conflicts := a.vmiApplier.Apply(
+		k8sfield.NewPath("spec"),
+		instancetypeSpec,
+		preferenceSpec,
+		&vm.Spec.Template.Spec,
+		&vm.ObjectMeta,
+	); len(conflicts) > 0 {
 		return fmt.Errorf("VM conflicts with instancetype spec in fields: [%s]", conflicts.String())
 	}
 	return nil

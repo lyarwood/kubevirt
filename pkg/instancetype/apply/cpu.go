@@ -1,4 +1,4 @@
-//nolint:gocyclo,lll
+//nolint:gocyclo
 package apply
 
 import (
@@ -11,7 +11,12 @@ import (
 	preferenceApply "kubevirt.io/kubevirt/pkg/preference/apply"
 )
 
-func applyCPU(field *k8sfield.Path, instancetypeSpec *v1beta1.VirtualMachineInstancetypeSpec, preferenceSpec *v1beta1.VirtualMachinePreferenceSpec, vmiSpec *virtv1.VirtualMachineInstanceSpec) Conflicts {
+func applyCPU(
+	field *k8sfield.Path,
+	instancetypeSpec *v1beta1.VirtualMachineInstancetypeSpec,
+	preferenceSpec *v1beta1.VirtualMachinePreferenceSpec,
+	vmiSpec *virtv1.VirtualMachineInstanceSpec,
+) Conflicts {
 	if vmiSpec.Domain.CPU == nil {
 		vmiSpec.Domain.CPU = &virtv1.CPU{}
 	}
@@ -85,7 +90,11 @@ func applyGuestCPUTopology(vCPUs uint32, preferenceSpec *v1beta1.VirtualMachineP
 	}
 }
 
-func validateCPU(field *k8sfield.Path, instancetypeSpec *v1beta1.VirtualMachineInstancetypeSpec, vmiSpec *virtv1.VirtualMachineInstanceSpec) (conflicts Conflicts) {
+func validateCPU(
+	field *k8sfield.Path,
+	instancetypeSpec *v1beta1.VirtualMachineInstancetypeSpec,
+	vmiSpec *virtv1.VirtualMachineInstanceSpec,
+) (conflicts Conflicts) {
 	if _, hasCPURequests := vmiSpec.Domain.Resources.Requests[k8sv1.ResourceCPU]; hasCPURequests {
 		conflicts = append(conflicts, field.Child("domain", "resources", "requests", string(k8sv1.ResourceCPU)))
 	}

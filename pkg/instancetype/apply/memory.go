@@ -1,4 +1,3 @@
-//nolint:lll
 package apply
 
 import (
@@ -10,7 +9,11 @@ import (
 	v1beta1 "kubevirt.io/api/instancetype/v1beta1"
 )
 
-func applyMemory(field *k8sfield.Path, instancetypeSpec *v1beta1.VirtualMachineInstancetypeSpec, vmiSpec *virtv1.VirtualMachineInstanceSpec) Conflicts {
+func applyMemory(
+	field *k8sfield.Path,
+	instancetypeSpec *v1beta1.VirtualMachineInstancetypeSpec,
+	vmiSpec *virtv1.VirtualMachineInstanceSpec,
+) Conflicts {
 	if vmiSpec.Domain.Memory != nil {
 		return Conflicts{field.Child("domain", "memory")}
 	}
@@ -23,21 +26,22 @@ func applyMemory(field *k8sfield.Path, instancetypeSpec *v1beta1.VirtualMachineI
 		return Conflicts{field.Child("domain", "resources", "limits", string(k8sv1.ResourceMemory))}
 	}
 
-	instancetypeMemoryGuest := instancetypeSpec.Memory.Guest.DeepCopy()
+	instancetypeMemory := instancetypeSpec.Memory.Guest.DeepCopy()
 	vmiSpec.Domain.Memory = &virtv1.Memory{
-		Guest: &instancetypeMemoryGuest,
+		Guest: &instancetypeMemory,
 	}
 
 	// If memory overcommit has been requested, set the memory requests to be
 	// lower than the guest memory by the requested percent.
 	const totalPercentage = 100
-	if instancetypeMemoryOvercommit := instancetypeSpec.Memory.OvercommitPercent; instancetypeMemoryOvercommit > 0 {
+	if instancetypeOverCommit := instancetypeSpec.Memory.OvercommitPercent; instancetypeOverCommit > 0 {
 		if vmiSpec.Domain.Resources.Requests == nil {
 			vmiSpec.Domain.Resources.Requests = k8sv1.ResourceList{}
 		}
-		podRequestedMemory := int64(float32(instancetypeSpec.Memory.Guest.Value()) * (1 - float32(instancetypeSpec.Memory.OvercommitPercent)/totalPercentage))
 
-		vmiSpec.Domain.Resources.Requests[k8sv1.ResourceMemory] = *resource.NewQuantity(podRequestedMemory, instancetypeMemoryGuest.Format)
+		podRequestedMemory := int64(float32(instancetypeMemory.Value()) * (1 - float32(instancetypeOverCommit)/totalPercentage))
+
+		vmiSpec.Domain.Resources.Requests[k8sv1.ResourceMemory] = *resource.NewQuantity(podRequestedMemory, instancetypeMemory.Format)
 	}
 
 	if instancetypeSpec.Memory.Hugepages != nil {

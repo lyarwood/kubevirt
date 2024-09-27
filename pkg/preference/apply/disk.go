@@ -1,4 +1,4 @@
-//nolint:gocyclo,lll
+//nolint:gocyclo
 package apply
 
 import (
@@ -33,7 +33,9 @@ func applyDiskPreferences(preferenceSpec *v1beta1.VirtualMachinePreferenceSpec, 
 				vmiDisk.IO = preferenceSpec.Devices.PreferredDiskIO
 			}
 
-			if preferenceSpec.Devices.PreferredDiskDedicatedIoThread != nil && vmiDisk.DedicatedIOThread == nil && vmiDisk.DiskDevice.Disk.Bus == virtv1.DiskBusVirtio {
+			if preferenceSpec.Devices.PreferredDiskDedicatedIoThread != nil &&
+				vmiDisk.DedicatedIOThread == nil &&
+				vmiDisk.DiskDevice.Disk.Bus == virtv1.DiskBusVirtio {
 				vmiDisk.DedicatedIOThread = pointer.P(*preferenceSpec.Devices.PreferredDiskDedicatedIoThread)
 			}
 		} else if vmiDisk.DiskDevice.CDRom != nil {

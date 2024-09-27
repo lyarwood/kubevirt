@@ -1,4 +1,3 @@
-//nolint:lll
 package apply
 
 import (
@@ -21,7 +20,13 @@ func NewVMIApplier() *VMIApplier {
 	}
 }
 
-func (a *VMIApplier) Apply(field *k8sfield.Path, instancetypeSpec *v1beta1.VirtualMachineInstancetypeSpec, preferenceSpec *v1beta1.VirtualMachinePreferenceSpec, vmiSpec *virtv1.VirtualMachineInstanceSpec, vmiMetadata *metav1.ObjectMeta) (conflicts Conflicts) {
+func (a *VMIApplier) Apply(
+	field *k8sfield.Path,
+	instancetypeSpec *v1beta1.VirtualMachineInstancetypeSpec,
+	preferenceSpec *v1beta1.VirtualMachinePreferenceSpec,
+	vmiSpec *virtv1.VirtualMachineInstanceSpec,
+	vmiMetadata *metav1.ObjectMeta,
+) (conflicts Conflicts) {
 	if instancetypeSpec == nil && preferenceSpec == nil {
 		return
 	}

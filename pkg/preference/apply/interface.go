@@ -1,4 +1,3 @@
-//nolint:lll
 package apply
 
 import (
@@ -27,7 +26,9 @@ func applyInterfacePreferences(preferenceSpec *v1beta1.VirtualMachinePreferenceS
 		if preferenceSpec.Devices.PreferredInterfaceModel != "" && vmiIface.Model == "" {
 			vmiIface.Model = preferenceSpec.Devices.PreferredInterfaceModel
 		}
-		if preferenceSpec.Devices.PreferredInterfaceMasquerade != nil && isInterfaceBindingUnset(vmiIface) && isInterfaceOnPodNetwork(vmiIface.Name, vmiSpec) {
+		if preferenceSpec.Devices.PreferredInterfaceMasquerade != nil &&
+			isInterfaceBindingUnset(vmiIface) &&
+			isInterfaceOnPodNetwork(vmiIface.Name, vmiSpec) {
 			vmiIface.Masquerade = preferenceSpec.Devices.PreferredInterfaceMasquerade.DeepCopy()
 		}
 	}
