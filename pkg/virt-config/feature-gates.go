@@ -81,6 +81,12 @@ const (
 	// This feature requires following Kubernetes feature gate "ServiceAccountTokenPodNodeInfo". The feature gate is available
 	// in Kubernetes 1.30 as Beta.
 	NodeRestrictionGate = "NodeRestriction"
+	// Owner: @lyarwood
+	// Alpha: v1.4.0
+	//
+	// InstancetypeReferencePolicy allows a cluster admin to control how a VirtualMachine references instance types and preferences
+	// through the kv.spec.configuration.instancetype.referencePolicy configurable.
+	InstancetypeReferencePolicy = "InstancetypeReferencePolicy"
 )
 
 func (config *ClusterConfig) isFeatureGateEnabled(featureGate string) bool {
