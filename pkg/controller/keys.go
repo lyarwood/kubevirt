@@ -1,8 +1,7 @@
 package controller
 
 import (
-	"fmt"
-
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -11,5 +10,8 @@ var (
 )
 
 func NamespacedKey(namespace, name string) string {
-	return fmt.Sprintf("%s/%s", namespace, name)
+	return types.NamespacedName{
+		Name:      name,
+		Namespace: namespace,
+	}.String()
 }
