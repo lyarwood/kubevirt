@@ -27,6 +27,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 
+	"kubevirt.io/kubevirt/pkg/instancetype"
 	"kubevirt.io/kubevirt/pkg/monitoring/metrics/common/client"
 	"kubevirt.io/kubevirt/pkg/monitoring/metrics/common/workqueue"
 	virtconfig "kubevirt.io/kubevirt/pkg/virt-config"
@@ -51,6 +52,8 @@ var (
 	vmiMigrationInformer          cache.SharedIndexInformer
 	kvPodInformer                 cache.SharedIndexInformer
 	clusterConfig                 *virtconfig.ClusterConfig
+
+	methods *instancetype.InstancetypeMethods
 )
 
 func SetupMetrics(
@@ -64,6 +67,7 @@ func SetupMetrics(
 	vmiMigration cache.SharedIndexInformer,
 	pod cache.SharedIndexInformer,
 	virtClusterConfig *virtconfig.ClusterConfig,
+	instancetypeMethods *instancetype.InstancetypeMethods,
 ) error {
 	vmInformer = vm
 	vmiInformer = vmi
@@ -75,6 +79,8 @@ func SetupMetrics(
 	vmiMigrationInformer = vmiMigration
 	kvPodInformer = pod
 	clusterConfig = virtClusterConfig
+
+	methods = instancetypeMethods
 
 	if err := client.SetupMetrics(); err != nil {
 		return err

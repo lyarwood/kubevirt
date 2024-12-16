@@ -278,16 +278,22 @@ func CollectResourceRequestsAndLimits(vms []*k6tv1.VirtualMachine) []operatormet
 	var results []operatormetrics.CollectorResult
 
 	for _, vm := range vms {
+		// Apply any instance type and preference to a copy of the VM before proceeding
+		vmCopy := vm.DeepCopy()
+		methods.ApplyToVM(vmCopy)
+
 		// Memory requests and limits from domain resources
-		results = append(results, collectMemoryResourceRequestsFromDomainResources(vm)...)
-		results = append(results, collectMemoryResourceLimitsFromDomainResources(vm)...)
+		results = append(results, collectMemoryResourceRequestsFromDomainResources(vmCopy)...)
+		results = append(results, collectMemoryResourceLimitsFromDomainResources(vmCopy)...)
+
+		// Memory requests from domain memory missing?
 
 		// CPU requests from domain CPU
-		results = append(results, collectCpuResourceRequestsFromDomainCpu(vm)...)
+		results = append(results, collectCpuResourceRequestsFromDomainCpu(vmCopy)...)
 
 		// CPU requests and limits from domain resources
-		results = append(results, collectCpuResourceRequestsFromDomainResources(vm)...)
-		results = append(results, collectCpuResourceLimitsFromDomainResources(vm)...)
+		results = append(results, collectCpuResourceRequestsFromDomainResources(vmCopy)...)
+		results = append(results, collectCpuResourceLimitsFromDomainResources(vmCopy)...)
 	}
 
 	return results
