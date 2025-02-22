@@ -242,23 +242,28 @@ type instancetypeHandler interface {
 	ApplyDevicePreferences(vm *virtv1.VirtualMachine, vmi *virtv1.VirtualMachineInstance) error
 }
 
+type instancetypeNetHandler interface {
+	ApplyInterfacePreferencesToVMI(*virtv1.VirtualMachine, *virtv1.VirtualMachineInstanceSpec) *virtv1.VirtualMachineInstanceSpec
+}
+
 type Controller struct {
-	clientset              kubecli.KubevirtClient
-	Queue                  workqueue.TypedRateLimitingInterface[string]
-	vmiIndexer             cache.Indexer
-	vmIndexer              cache.Indexer
-	dataVolumeStore        cache.Store
-	dataSourceStore        cache.Store
-	namespaceStore         cache.Store
-	pvcStore               cache.Store
-	crIndexer              cache.Indexer
-	instancetypeController instancetypeHandler
-	recorder               record.EventRecorder
-	expectations           *controller.UIDTrackingControllerExpectations
-	dataVolumeExpectations *controller.UIDTrackingControllerExpectations
-	cloneAuthFunc          CloneAuthFunc
-	clusterConfig          *virtconfig.ClusterConfig
-	hasSynced              func() bool
+	clientset                 kubecli.KubevirtClient
+	Queue                     workqueue.TypedRateLimitingInterface[string]
+	vmiIndexer                cache.Indexer
+	vmIndexer                 cache.Indexer
+	dataVolumeStore           cache.Store
+	dataSourceStore           cache.Store
+	namespaceStore            cache.Store
+	pvcStore                  cache.Store
+	crIndexer                 cache.Indexer
+	instancetypeController    instancetypeHandler
+	instancetypeNetController instancetypeNetHandler
+	recorder                  record.EventRecorder
+	expectations              *controller.UIDTrackingControllerExpectations
+	dataVolumeExpectations    *controller.UIDTrackingControllerExpectations
+	cloneAuthFunc             CloneAuthFunc
+	clusterConfig             *virtconfig.ClusterConfig
+	hasSynced                 func() bool
 
 	netSynchronizer synchronizer
 }
