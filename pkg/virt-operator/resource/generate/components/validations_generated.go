@@ -30069,4 +30069,95 @@ var CRDsValidation map[string]string = map[string]string{
   - spec
   type: object
 `,
+	"virtualmachinetemplate": `openAPIV3Schema:
+  properties:
+    apiVersion:
+      description: |-
+        APIVersion defines the versioned schema of this representation of an object.
+        Servers should convert recognized schemas to the latest internal value, and
+        may reject unrecognized values.
+        More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+      type: string
+    kind:
+      description: |-
+        Kind is a string value representing the REST resource this object represents.
+        Servers may infer this from the endpoint the client submits requests to.
+        Cannot be updated.
+        In CamelCase.
+        More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+      type: string
+    metadata:
+      type: object
+    spec:
+      properties:
+        message:
+          description: |-
+            message is an optional instructional message that will
+            be displayed when this template is instantiated.
+            This field should inform the user how to utilize the newly created resources.
+            Parameter substitution will be performed on the message before being
+            displayed so that generated credentials and other parameters can be
+            included in the output.
+          type: string
+        parameters:
+          description: |-
+            parameters is an optional array of Parameters used during the
+            Template to Config transformation.
+          items:
+            description: |-
+              Parameter defines a name/value variable that is to be processed during
+              the Template to Config transformation.
+            properties:
+              description:
+                description: description of a parameter. Optional.
+                type: string
+              displayName:
+                description: 'Optional: The name that will show in UI instead of parameter
+                  ''Name'''
+                type: string
+              from:
+                description: from is an input value for the generator. Optional.
+                type: string
+              generate:
+                description: |-
+                  generate specifies the generator to be used to generate random string
+                  from an input value specified by From field. The result string is
+                  stored into Value field. If empty, no generator is being used, leaving
+                  the result Value untouched. Optional.
+
+                  The only supported generator is "expression", which accepts a "from"
+                  value in the form of a simple regular expression containing the
+                  range expression "[a-zA-Z0-9]", and the length expression "a{length}".
+
+                  Examples:
+
+                  from             | value
+                type: string
+              name:
+                description: |-
+                  name must be set and it can be referenced in Template
+                  Items using ${PARAMETER_NAME}. Required.
+                type: string
+              required:
+                description: 'Optional: Indicates the parameter must have a value.  Defaults
+                  to false.'
+                type: boolean
+              value:
+                description: |-
+                  value holds the Parameter data. If specified, the generator will be
+                  ignored. The value replaces all occurrences of the Parameter ${Name}
+                  expression during the Template to Config transformation. Optional.
+                type: string
+            required:
+            - name
+            type: object
+          type: array
+        virtualMachine:
+          type: object
+          x-kubernetes-preserve-unknown-fields: true
+      required:
+      - virtualMachine
+      type: object
+  type: object
+`,
 }

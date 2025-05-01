@@ -39,6 +39,7 @@ import (
 	poolv1alpha1 "kubevirt.io/client-go/kubevirt/typed/pool/v1alpha1"
 	snapshotv1alpha1 "kubevirt.io/client-go/kubevirt/typed/snapshot/v1alpha1"
 	snapshotv1beta1 "kubevirt.io/client-go/kubevirt/typed/snapshot/v1beta1"
+	templatev1alpha1 "kubevirt.io/client-go/kubevirt/typed/template/v1alpha1"
 )
 
 type Interface interface {
@@ -55,6 +56,7 @@ type Interface interface {
 	PoolV1alpha1() poolv1alpha1.PoolV1alpha1Interface
 	SnapshotV1alpha1() snapshotv1alpha1.SnapshotV1alpha1Interface
 	SnapshotV1beta1() snapshotv1beta1.SnapshotV1beta1Interface
+	TemplateV1alpha1() templatev1alpha1.TemplateV1alpha1Interface
 }
 
 // Clientset contains the clients for groups.
@@ -72,6 +74,7 @@ type Clientset struct {
 	poolV1alpha1         *poolv1alpha1.PoolV1alpha1Client
 	snapshotV1alpha1     *snapshotv1alpha1.SnapshotV1alpha1Client
 	snapshotV1beta1      *snapshotv1beta1.SnapshotV1beta1Client
+	templateV1alpha1     *templatev1alpha1.TemplateV1alpha1Client
 }
 
 // CloneV1alpha1 retrieves the CloneV1alpha1Client
@@ -132,6 +135,11 @@ func (c *Clientset) SnapshotV1alpha1() snapshotv1alpha1.SnapshotV1alpha1Interfac
 // SnapshotV1beta1 retrieves the SnapshotV1beta1Client
 func (c *Clientset) SnapshotV1beta1() snapshotv1beta1.SnapshotV1beta1Interface {
 	return c.snapshotV1beta1
+}
+
+// TemplateV1alpha1 retrieves the TemplateV1alpha1Client
+func (c *Clientset) TemplateV1alpha1() templatev1alpha1.TemplateV1alpha1Interface {
+	return c.templateV1alpha1
 }
 
 // Discovery retrieves the DiscoveryClient
@@ -226,6 +234,10 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 	if err != nil {
 		return nil, err
 	}
+	cs.templateV1alpha1, err = templatev1alpha1.NewForConfigAndClient(&configShallowCopy, httpClient)
+	if err != nil {
+		return nil, err
+	}
 
 	cs.DiscoveryClient, err = discovery.NewDiscoveryClientForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
@@ -259,6 +271,7 @@ func New(c rest.Interface) *Clientset {
 	cs.poolV1alpha1 = poolv1alpha1.New(c)
 	cs.snapshotV1alpha1 = snapshotv1alpha1.New(c)
 	cs.snapshotV1beta1 = snapshotv1beta1.New(c)
+	cs.templateV1alpha1 = templatev1alpha1.New(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)
 	return &cs

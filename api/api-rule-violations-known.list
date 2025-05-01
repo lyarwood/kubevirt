@@ -44,6 +44,7 @@ API rule violation: list_type_missing,kubevirt.io/api/snapshot/v1alpha1,VirtualM
 API rule violation: list_type_missing,kubevirt.io/api/snapshot/v1alpha1,VirtualMachineSnapshotContentSpec,VolumeBackups
 API rule violation: list_type_missing,kubevirt.io/api/snapshot/v1alpha1,VirtualMachineSnapshotContentStatus,VolumeSnapshotStatus
 API rule violation: list_type_missing,kubevirt.io/api/snapshot/v1alpha1,VirtualMachineSnapshotStatus,Conditions
+API rule violation: list_type_missing,kubevirt.io/api/template/v1alpha1,VirtualMachineTemplateSpec,Parameters
 API rule violation: list_type_missing,kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1,CDIConfigSpec,FeatureGates
 API rule violation: list_type_missing,kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1,CDIConfigSpec,ImagePullSecrets
 API rule violation: list_type_missing,kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1,CDIConfigSpec,InsecureRegistries
