@@ -46,6 +46,7 @@ import (
 	poolv1 "kubevirt.io/api/pool/v1alpha1"
 	snapshotv1alpha1 "kubevirt.io/api/snapshot/v1alpha1"
 	snapshotv1beta1 "kubevirt.io/api/snapshot/v1beta1"
+	templatev1alpha1 "kubevirt.io/api/template/v1alpha1"
 
 	"kubevirt.io/kubevirt/pkg/pointer"
 )
@@ -930,4 +931,36 @@ func NewKubeVirtPriorityClassCR() *schedulingv1.PriorityClass {
 		GlobalDefault: false,
 		Description:   "This priority class should be used for KubeVirt core components only.",
 	}
+}
+
+func NewVirtualMachineTemplateCrd() (*extv1.CustomResourceDefinition, error) {
+	crd := newBlankCrd()
+
+	crd.Name = "virtualmachinetemplates." + templatev1alpha1.SchemeGroupVersion.Group
+	crd.Spec = extv1.CustomResourceDefinitionSpec{
+		Group: templatev1alpha1.SchemeGroupVersion.Group,
+		Names: extv1.CustomResourceDefinitionNames{
+			Plural:     templatev1alpha1.PluralResourceName,
+			Singular:   templatev1alpha1.SingularResourceName,
+			ShortNames: []string{"vmtemplate", "vmt"},
+			Kind:       "VirtualMachineTemplate",
+			Categories: []string{"all"},
+		},
+		Scope: extv1.NamespaceScoped,
+		Conversion: &extv1.CustomResourceConversion{
+			Strategy: extv1.NoneConverter,
+		},
+		Versions: []extv1.CustomResourceDefinitionVersion{
+			{
+				Name:    templatev1alpha1.SchemeGroupVersion.Version,
+				Served:  true,
+				Storage: true,
+			},
+		},
+	}
+
+	if err := patchValidationForAllVersions(crd); err != nil {
+		return nil, err
+	}
+	return crd, nil
 }
