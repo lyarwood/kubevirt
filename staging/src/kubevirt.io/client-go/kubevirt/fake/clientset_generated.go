@@ -49,6 +49,8 @@ import (
 	fakesnapshotv1alpha1 "kubevirt.io/client-go/kubevirt/typed/snapshot/v1alpha1/fake"
 	snapshotv1beta1 "kubevirt.io/client-go/kubevirt/typed/snapshot/v1beta1"
 	fakesnapshotv1beta1 "kubevirt.io/client-go/kubevirt/typed/snapshot/v1beta1/fake"
+	templatev1alpha1 "kubevirt.io/client-go/kubevirt/typed/template/v1alpha1"
+	faketemplatev1alpha1 "kubevirt.io/client-go/kubevirt/typed/template/v1alpha1/fake"
 )
 
 // NewSimpleClientset returns a clientset that will respond with the provided objects.
@@ -163,4 +165,9 @@ func (c *Clientset) SnapshotV1alpha1() snapshotv1alpha1.SnapshotV1alpha1Interfac
 // SnapshotV1beta1 retrieves the SnapshotV1beta1Client
 func (c *Clientset) SnapshotV1beta1() snapshotv1beta1.SnapshotV1beta1Interface {
 	return &fakesnapshotv1beta1.FakeSnapshotV1beta1{Fake: &c.Fake}
+}
+
+// TemplateV1alpha1 retrieves the TemplateV1alpha1Client
+func (c *Clientset) TemplateV1alpha1() templatev1alpha1.TemplateV1alpha1Interface {
+	return &faketemplatev1alpha1.FakeTemplateV1alpha1{Fake: &c.Fake}
 }

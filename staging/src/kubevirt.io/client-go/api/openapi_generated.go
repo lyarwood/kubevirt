@@ -710,6 +710,10 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"kubevirt.io/api/snapshot/v1beta1.VolumeBackup":                                              schema_kubevirtio_api_snapshot_v1beta1_VolumeBackup(ref),
 		"kubevirt.io/api/snapshot/v1beta1.VolumeRestore":                                             schema_kubevirtio_api_snapshot_v1beta1_VolumeRestore(ref),
 		"kubevirt.io/api/snapshot/v1beta1.VolumeSnapshotStatus":                                      schema_kubevirtio_api_snapshot_v1beta1_VolumeSnapshotStatus(ref),
+		"kubevirt.io/api/template/v1alpha1.VirtualMachineTemplate":                                   schema_kubevirtio_api_template_v1alpha1_VirtualMachineTemplate(ref),
+		"kubevirt.io/api/template/v1alpha1.VirtualMachineTemplateList":                               schema_kubevirtio_api_template_v1alpha1_VirtualMachineTemplateList(ref),
+		"kubevirt.io/api/template/v1alpha1.VirtualMachineTemplateSpec":                               schema_kubevirtio_api_template_v1alpha1_VirtualMachineTemplateSpec(ref),
+		"kubevirt.io/api/template/v1alpha1.VirtualMachineTemplateStatus":                             schema_kubevirtio_api_template_v1alpha1_VirtualMachineTemplateStatus(ref),
 		"kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1.CDI":                      schema_pkg_apis_core_v1beta1_CDI(ref),
 		"kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1.CDICertConfig":            schema_pkg_apis_core_v1beta1_CDICertConfig(ref),
 		"kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1.CDIConfig":                schema_pkg_apis_core_v1beta1_CDIConfig(ref),
@@ -34320,6 +34324,147 @@ func schema_kubevirtio_api_snapshot_v1beta1_VolumeSnapshotStatus(ref common.Refe
 		},
 		Dependencies: []string{
 			"k8s.io/apimachinery/pkg/apis/meta/v1.Time", "kubevirt.io/api/snapshot/v1beta1.Error"},
+	}
+}
+
+func schema_kubevirtio_api_template_v1alpha1_VirtualMachineTemplate(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref("k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta"),
+						},
+					},
+					"spec": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref("kubevirt.io/api/template/v1alpha1.VirtualMachineTemplateSpec"),
+						},
+					},
+				},
+				Required: []string{"spec"},
+			},
+		},
+		Dependencies: []string{
+			"k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta", "kubevirt.io/api/template/v1alpha1.VirtualMachineTemplateSpec"},
+	}
+}
+
+func schema_kubevirtio_api_template_v1alpha1_VirtualMachineTemplateList(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref("k8s.io/apimachinery/pkg/apis/meta/v1.ListMeta"),
+						},
+					},
+					"items": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: map[string]interface{}{},
+										Ref:     ref("kubevirt.io/api/template/v1alpha1.VirtualMachineTemplate"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"items"},
+			},
+		},
+		Dependencies: []string{
+			"k8s.io/apimachinery/pkg/apis/meta/v1.ListMeta", "kubevirt.io/api/template/v1alpha1.VirtualMachineTemplate"},
+	}
+}
+
+func schema_kubevirtio_api_template_v1alpha1_VirtualMachineTemplateSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
+				Properties: map[string]spec.Schema{
+					"virtualMachine": {
+						SchemaProps: spec.SchemaProps{
+							Description: "A static VirtualMachine definition",
+							Ref:         ref("kubevirt.io/api/core/v1.VirtualMachine"),
+						},
+					},
+					"virtualMachineRef": {
+						SchemaProps: spec.SchemaProps{
+							Description: "A reference to an existing VirtualMachine",
+							Ref:         ref("k8s.io/api/core/v1.ObjectReference"),
+						},
+					},
+					"virtualMachineSnapshotRef": {
+						SchemaProps: spec.SchemaProps{
+							Description: "A reference to an existing VirtualMachineSnapshotRef",
+							Ref:         ref("k8s.io/api/core/v1.ObjectReference"),
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			"k8s.io/api/core/v1.ObjectReference", "kubevirt.io/api/core/v1.VirtualMachine"},
+	}
+}
+
+func schema_kubevirtio_api_template_v1alpha1_VirtualMachineTemplateStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
+				Properties: map[string]spec.Schema{
+					"virtualMachineSnapshotRef": {
+						SchemaProps: spec.SchemaProps{
+							Description: "A reference to a captured VirtualMachineSnapshotRef",
+							Ref:         ref("k8s.io/api/core/v1.ObjectReference"),
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			"k8s.io/api/core/v1.ObjectReference"},
 	}
 }
 
