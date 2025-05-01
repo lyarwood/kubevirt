@@ -87,8 +87,8 @@ const (
 
 	NAMESPACE = "kubevirt-test"
 
-	resourceCount = 85
-	patchCount    = 53
+	resourceCount = 86
+	patchCount    = 54
 	updateCount   = 33
 )
 
@@ -1234,6 +1234,7 @@ func (k *KubeVirtTestData) addAllWithExclusionMap(config *util.KubeVirtDeploymen
 		components.NewVirtualMachineClusterInstancetypeCrd, components.NewVirtualMachinePoolCrd,
 		components.NewMigrationPolicyCrd, components.NewVirtualMachinePreferenceCrd,
 		components.NewVirtualMachineClusterPreferenceCrd, components.NewVirtualMachineCloneCrd,
+		components.NewVirtualMachineTemplateCrd,
 	}
 	for _, f := range functions {
 		crd, err := f()
@@ -2441,7 +2442,7 @@ var _ = Describe("KubeVirt Operator", func() {
 			Expect(kvTestData.controller.stores.ClusterRoleBindingCache.List()).To(HaveLen(8))
 			Expect(kvTestData.controller.stores.RoleCache.List()).To(HaveLen(6))
 			Expect(kvTestData.controller.stores.RoleBindingCache.List()).To(HaveLen(6))
-			Expect(kvTestData.controller.stores.OperatorCrdCache.List()).To(HaveLen(16))
+			Expect(kvTestData.controller.stores.OperatorCrdCache.List()).To(HaveLen(17))
 			Expect(kvTestData.controller.stores.ServiceCache.List()).To(HaveLen(4))
 			Expect(kvTestData.controller.stores.DeploymentCache.List()).To(HaveLen(1))
 			Expect(kvTestData.controller.stores.DaemonSetCache.List()).To(BeEmpty())
