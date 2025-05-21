@@ -36,7 +36,47 @@ const (
 	unsupportedDataVolumeSource       = "unable to infer defaults from DataVolumeSpec as DataVolumeSource is not supported"
 	missingDataVolumeSourcePVC        = "unable to infer defaults from DataSource that doesn't provide DataVolumeSourcePVC"
 	unsupportedDataVolumeSourceRefFmt = "unable to infer defaults from DataVolumeSourceRef as Kind %s is not supported"
+	MissingLabelFmtTestWrangler                    = missingLabelFmt
+	UnsupportedDataVolumeSourceTestWrangler      = unsupportedDataVolumeSource
+	MissingDataVolumeSourcePVCTestWrangler       = missingDataVolumeSourcePVC
+	UnsupportedDataVolumeSourceRefFmtTestWrangler = unsupportedDataVolumeSourceRefFmt
+	UnsupportedVolumeTypeFmtTestWrangler         = unsupportedVolumeTypeFmt
 )
+
+// This is a temporary wrapper for testing purposes and should be removed or made private later.
+func FromLabelsTestWrangler(labels map[string]string, defaultNameLabel, defaultKindLabel string) (string, string, error) {
+	return fromLabels(labels, defaultNameLabel, defaultKindLabel)
+}
+
+// This is a temporary wrapper for testing purposes and should be removed or made private later.
+func (h *handler) FromPVCTestWrangler(pvcName, pvcNamespace, defaultNameLabel, defaultKindLabel string) (string, string, error) {
+	return h.fromPVC(pvcName, pvcNamespace, defaultNameLabel, defaultKindLabel)
+}
+
+// This is a temporary wrapper for testing purposes and should be removed or made private later.
+func (h *handler) FromDataVolumeTestWrangler(vm *virtv1.VirtualMachine, dvName, defaultNameLabel, defaultKindLabel string) (string, string, error) {
+	return h.fromDataVolume(vm, dvName, defaultNameLabel, defaultKindLabel)
+}
+
+// This is a temporary wrapper for testing purposes and should be removed or made private later.
+func (h *handler) FromDataVolumeSpecTestWrangler(dataVolumeSpec *cdiv1beta1.DataVolumeSpec, defaultNameLabel, defaultKindLabel, vmNameSpace string) (string, string, error) {
+	return h.fromDataVolumeSpec(dataVolumeSpec, defaultNameLabel, defaultKindLabel, vmNameSpace)
+}
+
+// This is a temporary wrapper for testing purposes and should be removed or made private later.
+func (h *handler) FromDataSourceTestWrangler(dataSourceName, dataSourceNamespace, defaultNameLabel, defaultKindLabel string) (string, string, error) {
+	return h.fromDataSource(dataSourceName, dataSourceNamespace, defaultNameLabel, defaultKindLabel)
+}
+
+// This is a temporary wrapper for testing purposes and should be removed or made private later.
+func (h *handler) FromDataVolumeSourceRefTestWrangler(sourceRef *cdiv1beta1.DataVolumeSourceRef, defaultNameLabel, defaultKindLabel, vmNameSpace string) (string, string, error) {
+	return h.fromDataVolumeSourceRef(sourceRef, defaultNameLabel, defaultKindLabel, vmNameSpace)
+}
+
+// This is a temporary wrapper for testing purposes and should be removed or made private later.
+func (h *handler) FromVolumesTestWrangler(vm *virtv1.VirtualMachine, inferFromVolumeName, defaultNameLabel, defaultKindLabel string) (string, string, error) {
+	return h.fromVolumes(vm, inferFromVolumeName, defaultNameLabel, defaultKindLabel)
+}
 
 /*
 Defaults will be inferred from the following combinations of DataVolumeSources, DataVolumeTemplates, DataSources and PVCs:
