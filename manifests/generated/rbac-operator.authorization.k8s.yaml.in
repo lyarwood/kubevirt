@@ -739,6 +739,23 @@ rules:
   - list
   - watch
 - apiGroups:
+  - template.kubevirt.io
+  resources:
+  - virtualmachinetemplates
+  - virtualmachinetemplates/status
+  - virtualmachinetemplates/finalizers
+  - virtualmachinetemplaterequests
+  - virtualmachinetemplaterequests/status
+  - virtualmachinetemplaterequests/finalizers
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - delete
+  - patch
+- apiGroups:
   - migrations.kubevirt.io
   resources:
   - migrationpolicies

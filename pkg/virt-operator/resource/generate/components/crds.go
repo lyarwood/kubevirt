@@ -70,6 +70,8 @@ var (
 	VIRTUALMACHINEEXPORT             = "virtualmachineexports." + exportv1beta1.SchemeGroupVersion.Group
 	MIGRATIONPOLICY                  = "migrationpolicies." + migrationsv1.MigrationPolicyKind.Group
 	VIRTUALMACHINECLONE              = "virtualmachineclones." + clone.GroupName
+	VIRTUALMACHINETEMPLATE           = "virtualmachinetemplates." + templatev1alpha1.SchemeGroupVersion.Group
+	VIRTUALMACHINETEMPLATEREQUEST    = "virtualmachinetemplaterequests." + templatev1alpha1.SchemeGroupVersion.Group
 )
 
 func addFieldsToVersion(version *extv1.CustomResourceDefinitionVersion, fields ...interface{}) error {
@@ -205,7 +207,8 @@ func NewVirtualMachineCrd() (*extv1.CustomResourceDefinition, error) {
 		{Name: "Status", Description: "Human Readable Status", Type: "string", JSONPath: ".status.printableStatus"},
 		{Name: "Ready", Type: "string", JSONPath: ".status.conditions[?(@.type=='Ready')].status"},
 	}, &extv1.CustomResourceSubresources{
-		Status: &extv1.CustomResourceSubresourceStatus{}})
+		Status: &extv1.CustomResourceSubresourceStatus{},
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -931,7 +934,7 @@ func NewKubeVirtPriorityClassCR() *schedulingv1.PriorityClass {
 
 func NewVirtualMachineTemplateCrd() (*extv1.CustomResourceDefinition, error) {
 	crd := newBlankCrd()
-	crd.Name = "virtualmachinetemplates." + templatev1alpha1.SchemeGroupVersion.Group
+	crd.Name = VIRTUALMACHINETEMPLATE
 	crd.Spec = extv1.CustomResourceDefinitionSpec{
 		Group: templatev1alpha1.SchemeGroupVersion.Group,
 		Names: extv1.CustomResourceDefinitionNames{
@@ -951,6 +954,55 @@ func NewVirtualMachineTemplateCrd() (*extv1.CustomResourceDefinition, error) {
 				Storage: true,
 			},
 		},
+	}
+
+	err := addFieldsToAllVersions(crd, []extv1.CustomResourceColumnDefinition{
+		{Name: "Age", Type: "date", JSONPath: creationTimestampJSONPath},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if err := patchValidationForAllVersions(crd); err != nil {
+		return nil, err
+	}
+	return crd, nil
+}
+
+func NewVirtualMachineTemplateRequestCrd() (*extv1.CustomResourceDefinition, error) {
+	crd := newBlankCrd()
+	crd.Name = VIRTUALMACHINETEMPLATEREQUEST
+	crd.Spec = extv1.CustomResourceDefinitionSpec{
+		Group: templatev1alpha1.SchemeGroupVersion.Group,
+		Names: extv1.CustomResourceDefinitionNames{
+			Plural:     "virtualmachinetemplaterequests",
+			Singular:   "virtualmachinetemplaterequest",
+			Kind:       "VirtualMachineTemplateRequest",
+			Categories: []string{"all"},
+		},
+		Scope: extv1.NamespaceScoped,
+		Conversion: &extv1.CustomResourceConversion{
+			Strategy: extv1.NoneConverter,
+		},
+		Versions: []extv1.CustomResourceDefinitionVersion{
+			{
+				Name:    templatev1alpha1.SchemeGroupVersion.Version,
+				Served:  true,
+				Storage: true,
+				Subresources: &extv1.CustomResourceSubresources{
+					Status: &extv1.CustomResourceSubresourceStatus{},
+				},
+			},
+		},
+	}
+
+	err := addFieldsToAllVersions(crd, []extv1.CustomResourceColumnDefinition{
+		{Name: "Phase", Type: "string", JSONPath: phaseJSONPath},
+		{Name: "Source", Type: "string", JSONPath: ".spec.source.name"},
+		{Name: "Age", Type: "date", JSONPath: creationTimestampJSONPath},
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	if err := patchValidationForAllVersions(crd); err != nil {
