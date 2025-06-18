@@ -63,6 +63,7 @@ import (
 	migrationsv1 "kubevirt.io/api/migrations/v1alpha1"
 	poolv1 "kubevirt.io/api/pool/v1alpha1"
 	snapshotv1 "kubevirt.io/api/snapshot/v1beta1"
+	templatev1alpha1 "kubevirt.io/api/template/v1alpha1"
 	"kubevirt.io/client-go/kubecli"
 	"kubevirt.io/client-go/log"
 	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
@@ -152,6 +153,12 @@ type KubeInformerFactory interface {
 
 	// Watches VirtualMachineClusterPreference objects
 	VirtualMachineClusterPreference() cache.SharedIndexInformer
+
+	// Watches VirtualMachineTemplate objects
+	VirtualMachineTemplate() cache.SharedIndexInformer
+
+	// Watches VirtualMachineTemplateRequest objects
+	VirtualMachineTemplateRequest() cache.SharedIndexInformer
 
 	// Watches for k8s extensions api configmap
 	ApiAuthConfigMap() cache.SharedIndexInformer
@@ -838,6 +845,20 @@ func (f *kubeInformerFactory) VirtualMachineClusterPreference() cache.SharedInde
 	return f.getInformer("vmClusterPreferenceInformer", func() cache.SharedIndexInformer {
 		lw := cache.NewListWatchFromClient(f.clientSet.GeneratedKubeVirtClient().InstancetypeV1beta1().RESTClient(), instancetypeapi.ClusterPluralPreferenceResourceName, k8sv1.NamespaceAll, fields.Everything())
 		return cache.NewSharedIndexInformer(lw, &instancetypev1beta1.VirtualMachineClusterPreference{}, f.defaultResync, cache.Indexers{})
+	})
+}
+
+func (f *kubeInformerFactory) VirtualMachineTemplate() cache.SharedIndexInformer {
+	return f.getInformer("vmTemplateInformer", func() cache.SharedIndexInformer {
+		lw := cache.NewListWatchFromClient(f.clientSet.GeneratedKubeVirtClient().TemplateV1alpha1().RESTClient(), "virtualmachinetemplates", k8sv1.NamespaceAll, fields.Everything())
+		return cache.NewSharedIndexInformer(lw, &templatev1alpha1.VirtualMachineTemplate{}, f.defaultResync, cache.Indexers{})
+	})
+}
+
+func (f *kubeInformerFactory) VirtualMachineTemplateRequest() cache.SharedIndexInformer {
+	return f.getInformer("vmTemplateRequestInformer", func() cache.SharedIndexInformer {
+		lw := cache.NewListWatchFromClient(f.clientSet.GeneratedKubeVirtClient().TemplateV1alpha1().RESTClient(), "virtualmachinetemplaterequests", k8sv1.NamespaceAll, fields.Everything())
+		return cache.NewSharedIndexInformer(lw, &templatev1alpha1.VirtualMachineTemplateRequest{}, f.defaultResync, cache.Indexers{})
 	})
 }
 

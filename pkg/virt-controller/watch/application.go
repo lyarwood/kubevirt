@@ -45,6 +45,8 @@ import (
 	"kubevirt.io/kubevirt/pkg/virt-controller/watch/vm"
 	"kubevirt.io/kubevirt/pkg/virt-controller/watch/vmi"
 
+	templatecontroller "kubevirt.io/kubevirt/pkg/template/controller"
+
 	"github.com/emicklei/go-restful/v3"
 	vsv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -218,6 +220,11 @@ type VirtControllerApp struct {
 	preferenceInformer          cache.SharedIndexInformer
 	clusterPreferenceInformer   cache.SharedIndexInformer
 
+	templateRequestInformer   cache.SharedIndexInformer
+	templateRequestController *templatecontroller.TemplateRequestController
+
+	templateInformer cache.SharedIndexInformer
+
 	LeaderElection leaderelectionconfig.Configuration
 
 	launcherImage              string
@@ -256,6 +263,8 @@ type VirtControllerApp struct {
 	restoreControllerThreads          int
 	snapshotControllerResyncPeriod    time.Duration
 	cloneControllerThreads            int
+
+	templateRequestControllerThreads int
 
 	caConfigMapName          string
 	promCertFilePath         string
@@ -431,6 +440,9 @@ func Execute() {
 	app.preferenceInformer = app.informerFactory.VirtualMachinePreference()
 	app.clusterPreferenceInformer = app.informerFactory.VirtualMachineClusterPreference()
 
+	app.templateRequestInformer = app.informerFactory.VirtualMachineTemplateRequest()
+	app.templateInformer = app.informerFactory.VirtualMachineTemplate()
+
 	app.onOpenshift = onOpenShift
 
 	metricsInformers := &metrics.Informers{
@@ -469,6 +481,7 @@ func Execute() {
 	app.initExportController()
 	app.initWorkloadUpdaterController()
 	app.initCloneController()
+	app.initTemplateRequestController()
 	go app.Run()
 
 	<-app.reInitChan
@@ -599,6 +612,11 @@ func (vca *VirtControllerApp) onStartedLeading() func(ctx context.Context) {
 		go func() {
 			if err := vca.vmCloneController.Run(vca.cloneControllerThreads, stop); err != nil {
 				log.Log.Warningf("error running the clone controller: %v", err)
+			}
+		}()
+		go func() {
+			if err := vca.templateRequestController.Run(ctx, vca.templateRequestControllerThreads); err != nil {
+				log.Log.Warningf("error running the template request controller: %v", err)
 			}
 		}()
 
@@ -909,6 +927,18 @@ func (vca *VirtControllerApp) initCloneController() {
 	}
 }
 
+func (vca *VirtControllerApp) initTemplateRequestController() {
+	recorder := vca.newRecorder(k8sv1.NamespaceAll, "template-request-controller")
+	vca.templateRequestController = templatecontroller.NewTemplateRequestController(
+		vca.clientSet,
+		vca.templateRequestInformer,
+		vca.vmInformer,
+		vca.vmSnapshotInformer,
+		vca.templateInformer,
+		recorder,
+	)
+}
+
 func (vca *VirtControllerApp) leaderProbe(_ *restful.Request, response *restful.Response) {
 	res := map[string]interface{}{}
 
@@ -1014,6 +1044,9 @@ func (vca *VirtControllerApp) AddFlags() {
 
 	flag.IntVar(&vca.cloneControllerThreads, "clone-controller-threads", defaultControllerThreads,
 		"Number of goroutines to run for clone controller")
+
+	flag.IntVar(&vca.templateRequestControllerThreads, "template-request-controller-threads", defaultControllerThreads,
+		"Number of goroutines to run for template request controller")
 }
 
 func (vca *VirtControllerApp) setupLeaderElector() (err error) {

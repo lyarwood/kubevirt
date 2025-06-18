@@ -18,6 +18,7 @@ pkg/network/pod/annotations
 pkg/network/vmispec
 pkg/network/vmliveupdate
 pkg/storage/pod/annotations
+pkg/template
 pkg/virt-launcher/virtwrap/agent-poller
 pkg/virtctl/adm
 pkg/virtctl/clientconfig
