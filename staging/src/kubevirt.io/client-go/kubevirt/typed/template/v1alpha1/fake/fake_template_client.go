@@ -34,6 +34,10 @@ func (c *FakeTemplateV1alpha1) VirtualMachineTemplates(namespace string) v1alpha
 	return &FakeVirtualMachineTemplates{c, namespace}
 }
 
+func (c *FakeTemplateV1alpha1) VirtualMachineTemplateRequests(namespace string) v1alpha1.VirtualMachineTemplateRequestInterface {
+	return &FakeVirtualMachineTemplateRequests{c, namespace}
+}
+
 // RESTClient returns a RESTClient that is used to communicate
 // with API server by this client implementation.
 func (c *FakeTemplateV1alpha1) RESTClient() rest.Interface {

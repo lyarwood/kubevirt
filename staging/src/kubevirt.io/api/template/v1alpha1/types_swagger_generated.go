@@ -35,3 +35,53 @@ func (Parameter) SwaggerDoc() map[string]string {
 		"required":    "Optional: Indicates the parameter must have a value.  Defaults to false.",
 	}
 }
+
+func (VirtualMachineTemplateRequest) SwaggerDoc() map[string]string {
+	return map[string]string{
+		"":       "+genclient\n+k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object\n+kubebuilder:object:root=true\n+kubebuilder:resource:path=virtualmachinetemplaterequests,singular=virtualmachinetemplaterequest,categories=all\n+kubebuilder:subresource:status",
+		"spec":   "spec defines the desired state of VirtualMachineTemplateRequest",
+		"status": "status defines the observed state of VirtualMachineTemplateRequest",
+	}
+}
+
+func (VirtualMachineTemplateRequestSpec) SwaggerDoc() map[string]string {
+	return map[string]string{
+		"source": "source is a reference to the VirtualMachine to create a template from\n+kubebuilder:validation:Required",
+	}
+}
+
+func (VirtualMachineTemplateRequestStatus) SwaggerDoc() map[string]string {
+	return map[string]string{
+		"phase":              "phase represents the current phase of the template request",
+		"snapshot":           "snapshot references the VirtualMachineSnapshot created for this request",
+		"template":           "template references the VirtualMachineTemplate created from this request",
+		"conditions":         "conditions represent the latest available observations of the template request's current state\n+listType=map\n+listMapKey=type",
+		"observedGeneration": "observedGeneration is the most recent generation observed for this resource",
+	}
+}
+
+func (VirtualMachineReference) SwaggerDoc() map[string]string {
+	return map[string]string{
+		"":          "VirtualMachineReference represents a reference to a VirtualMachine",
+		"name":      "name is the name of the VirtualMachine\n+kubebuilder:validation:Required",
+		"namespace": "namespace is the namespace of the VirtualMachine\nIf not specified, defaults to the same namespace as the request",
+	}
+}
+
+func (VirtualMachineTemplateRequestCondition) SwaggerDoc() map[string]string {
+	return map[string]string{
+		"":                   "VirtualMachineTemplateRequestCondition represents a condition of a VirtualMachineTemplateRequest",
+		"type":               "type of the condition",
+		"status":             "status of the condition, one of True, False, Unknown",
+		"lastTransitionTime": "lastTransitionTime is the last time the condition transitioned from one status to another",
+		"reason":             "reason is a unique, one-word, CamelCase reason for the condition's last transition",
+		"message":            "message is a human-readable message indicating details about the transition",
+	}
+}
+
+func (VirtualMachineTemplateRequestList) SwaggerDoc() map[string]string {
+	return map[string]string{
+		"":      "VirtualMachineTemplateRequestList is a list of VirtualMachineTemplateRequest objects.",
+		"items": "items is a list of VirtualMachineTemplateRequest objects",
+	}
+}

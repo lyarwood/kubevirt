@@ -1,6 +1,7 @@
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -94,4 +95,120 @@ type Parameter struct {
 
 	// Optional: Indicates the parameter must have a value.  Defaults to false.
 	Required bool `json:"required,omitempty" protobuf:"varint,7,opt,name=required"`
+}
+
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:object:root=true
+// +kubebuilder:resource:path=virtualmachinetemplaterequests,singular=virtualmachinetemplaterequest,categories=all
+// +kubebuilder:subresource:status
+type VirtualMachineTemplateRequest struct {
+	metav1.TypeMeta `json:",inline"`
+
+	// metadata is the standard object's metadata.
+	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
+	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
+
+	// spec defines the desired state of VirtualMachineTemplateRequest
+	Spec VirtualMachineTemplateRequestSpec `json:"spec,omitempty" protobuf:"bytes,2,opt,name=spec"`
+
+	// status defines the observed state of VirtualMachineTemplateRequest
+	Status VirtualMachineTemplateRequestStatus `json:"status,omitempty" protobuf:"bytes,3,opt,name=status"`
+}
+
+type VirtualMachineTemplateRequestSpec struct {
+	// source is a reference to the VirtualMachine to create a template from
+	// +kubebuilder:validation:Required
+	Source VirtualMachineReference `json:"source" protobuf:"bytes,1,opt,name=source"`
+}
+
+type VirtualMachineTemplateRequestStatus struct {
+	// phase represents the current phase of the template request
+	Phase VirtualMachineTemplateRequestPhase `json:"phase,omitempty" protobuf:"bytes,1,opt,name=phase"`
+
+	// snapshot references the VirtualMachineSnapshot created for this request
+	Snapshot *corev1.TypedObjectReference `json:"snapshot,omitempty" protobuf:"bytes,2,opt,name=snapshot"`
+
+	// template references the VirtualMachineTemplate created from this request
+	Template *corev1.TypedObjectReference `json:"template,omitempty" protobuf:"bytes,3,opt,name=template"`
+
+	// conditions represent the latest available observations of the template request's current state
+	// +listType=map
+	// +listMapKey=type
+	Conditions []VirtualMachineTemplateRequestCondition `json:"conditions,omitempty" protobuf:"bytes,4,rep,name=conditions"`
+
+	// observedGeneration is the most recent generation observed for this resource
+	ObservedGeneration int64 `json:"observedGeneration,omitempty" protobuf:"varint,5,opt,name=observedGeneration"`
+}
+
+// VirtualMachineTemplateRequestPhase represents the phase of a VirtualMachineTemplateRequest
+type VirtualMachineTemplateRequestPhase string
+
+const (
+	// VirtualMachineTemplateRequestPhasePending indicates the request is pending processing
+	VirtualMachineTemplateRequestPhasePending VirtualMachineTemplateRequestPhase = "Pending"
+	// VirtualMachineTemplateRequestPhaseInProgress indicates the request is being processed
+	VirtualMachineTemplateRequestPhaseInProgress VirtualMachineTemplateRequestPhase = "InProgress"
+	// VirtualMachineTemplateRequestPhaseSucceeded indicates the request completed successfully
+	VirtualMachineTemplateRequestPhaseSucceeded VirtualMachineTemplateRequestPhase = "Succeeded"
+	// VirtualMachineTemplateRequestPhaseFailed indicates the request failed
+	VirtualMachineTemplateRequestPhaseFailed VirtualMachineTemplateRequestPhase = "Failed"
+)
+
+// VirtualMachineReference represents a reference to a VirtualMachine
+type VirtualMachineReference struct {
+	// name is the name of the VirtualMachine
+	// +kubebuilder:validation:Required
+	Name string `json:"name" protobuf:"bytes,1,opt,name=name"`
+
+	// namespace is the namespace of the VirtualMachine
+	// If not specified, defaults to the same namespace as the request
+	Namespace string `json:"namespace,omitempty" protobuf:"bytes,2,opt,name=namespace"`
+}
+
+// VirtualMachineTemplateRequestCondition represents a condition of a VirtualMachineTemplateRequest
+type VirtualMachineTemplateRequestCondition struct {
+	// type of the condition
+	Type VirtualMachineTemplateRequestConditionType `json:"type" protobuf:"bytes,1,opt,name=type"`
+
+	// status of the condition, one of True, False, Unknown
+	Status metav1.ConditionStatus `json:"status" protobuf:"bytes,2,opt,name=status"`
+
+	// lastTransitionTime is the last time the condition transitioned from one status to another
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty" protobuf:"bytes,3,opt,name=lastTransitionTime"`
+
+	// reason is a unique, one-word, CamelCase reason for the condition's last transition
+	Reason string `json:"reason,omitempty" protobuf:"bytes,4,opt,name=reason"`
+
+	// message is a human-readable message indicating details about the transition
+	Message string `json:"message,omitempty" protobuf:"bytes,5,opt,name=message"`
+}
+
+// VirtualMachineTemplateRequestConditionType represents the type of condition
+type VirtualMachineTemplateRequestConditionType string
+
+const (
+	// VirtualMachineTemplateRequestConditionReady indicates the request is ready
+	VirtualMachineTemplateRequestConditionReady VirtualMachineTemplateRequestConditionType = "Ready"
+	// VirtualMachineTemplateRequestConditionSourceReady indicates the source VM is ready
+	VirtualMachineTemplateRequestConditionSourceReady VirtualMachineTemplateRequestConditionType = "SourceReady"
+	// VirtualMachineTemplateRequestConditionSnapshotReady indicates the snapshot is ready
+	VirtualMachineTemplateRequestConditionSnapshotReady VirtualMachineTemplateRequestConditionType = "SnapshotReady"
+	// VirtualMachineTemplateRequestConditionTemplateReady indicates the template is ready
+	VirtualMachineTemplateRequestConditionTemplateReady VirtualMachineTemplateRequestConditionType = "TemplateReady"
+)
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:object:root=true
+
+// VirtualMachineTemplateRequestList is a list of VirtualMachineTemplateRequest objects.
+type VirtualMachineTemplateRequestList struct {
+	metav1.TypeMeta `json:",inline"`
+
+	// metadata is the standard list's metadata.
+	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
+	metav1.ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
+
+	// items is a list of VirtualMachineTemplateRequest objects
+	Items []VirtualMachineTemplateRequest `json:"items" protobuf:"bytes,2,rep,name=items"`
 }

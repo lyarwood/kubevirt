@@ -7,6 +7,7 @@ go_library(
         "generated_expansion.go",
         "template_client.go",
         "virtualmachinetemplate.go",
+        "virtualmachinetemplaterequest.go",
     ],
     importpath = "kubevirt.io/client-go/kubevirt/typed/template/v1alpha1",
     visibility = ["//visibility:public"],

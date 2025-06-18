@@ -30160,4 +30160,144 @@ var CRDsValidation map[string]string = map[string]string{
       type: object
   type: object
 `,
+	"virtualmachinetemplaterequest": `openAPIV3Schema:
+  properties:
+    apiVersion:
+      description: |-
+        APIVersion defines the versioned schema of this representation of an object.
+        Servers should convert recognized schemas to the latest internal value, and
+        may reject unrecognized values.
+        More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+      type: string
+    kind:
+      description: |-
+        Kind is a string value representing the REST resource this object represents.
+        Servers may infer this from the endpoint the client submits requests to.
+        Cannot be updated.
+        In CamelCase.
+        More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+      type: string
+    metadata:
+      type: object
+    spec:
+      description: spec defines the desired state of VirtualMachineTemplateRequest
+      properties:
+        source:
+          description: source is a reference to the VirtualMachine to create a template
+            from
+          properties:
+            name:
+              description: name is the name of the VirtualMachine
+              type: string
+            namespace:
+              description: |-
+                namespace is the namespace of the VirtualMachine
+                If not specified, defaults to the same namespace as the request
+              type: string
+          required:
+          - name
+          type: object
+      required:
+      - source
+      type: object
+    status:
+      description: status defines the observed state of VirtualMachineTemplateRequest
+      properties:
+        conditions:
+          description: conditions represent the latest available observations of the
+            template request's current state
+          items:
+            description: VirtualMachineTemplateRequestCondition represents a condition
+              of a VirtualMachineTemplateRequest
+            properties:
+              lastTransitionTime:
+                description: lastTransitionTime is the last time the condition transitioned
+                  from one status to another
+                format: date-time
+                type: string
+              message:
+                description: message is a human-readable message indicating details
+                  about the transition
+                type: string
+              reason:
+                description: reason is a unique, one-word, CamelCase reason for the
+                  condition's last transition
+                type: string
+              status:
+                description: status of the condition, one of True, False, Unknown
+                type: string
+              type:
+                description: type of the condition
+                type: string
+            required:
+            - status
+            - type
+            type: object
+          type: array
+          x-kubernetes-list-map-keys:
+          - type
+          x-kubernetes-list-type: map
+        observedGeneration:
+          description: observedGeneration is the most recent generation observed for
+            this resource
+          format: int64
+          type: integer
+        phase:
+          description: phase represents the current phase of the template request
+          type: string
+        snapshot:
+          description: snapshot references the VirtualMachineSnapshot created for
+            this request
+          properties:
+            apiGroup:
+              description: |-
+                APIGroup is the group for the resource being referenced.
+                If APIGroup is not specified, the specified Kind must be in the core API group.
+                For any other third-party types, APIGroup is required.
+              type: string
+            kind:
+              description: Kind is the type of resource being referenced
+              type: string
+            name:
+              description: Name is the name of resource being referenced
+              type: string
+            namespace:
+              description: |-
+                Namespace is the namespace of resource being referenced
+                Note that when a namespace is specified, a gateway.networking.k8s.io/ReferenceGrant object is required in the referent namespace to allow that namespace's owner to accept the reference. See the ReferenceGrant documentation for details.
+                (Alpha) This field requires the CrossNamespaceVolumeDataSource feature gate to be enabled.
+              type: string
+          required:
+          - kind
+          - name
+          type: object
+        template:
+          description: template references the VirtualMachineTemplate created from
+            this request
+          properties:
+            apiGroup:
+              description: |-
+                APIGroup is the group for the resource being referenced.
+                If APIGroup is not specified, the specified Kind must be in the core API group.
+                For any other third-party types, APIGroup is required.
+              type: string
+            kind:
+              description: Kind is the type of resource being referenced
+              type: string
+            name:
+              description: Name is the name of resource being referenced
+              type: string
+            namespace:
+              description: |-
+                Namespace is the namespace of resource being referenced
+                Note that when a namespace is specified, a gateway.networking.k8s.io/ReferenceGrant object is required in the referent namespace to allow that namespace's owner to accept the reference. See the ReferenceGrant documentation for details.
+                (Alpha) This field requires the CrossNamespaceVolumeDataSource feature gate to be enabled.
+              type: string
+          required:
+          - kind
+          - name
+          type: object
+      type: object
+  type: object
+`,
 }

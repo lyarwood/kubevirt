@@ -21,3 +21,5 @@ Copyright The KubeVirt Authors.
 package v1alpha1
 
 type VirtualMachineTemplateExpansion interface{}
+
+type VirtualMachineTemplateRequestExpansion interface{}

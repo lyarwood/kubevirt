@@ -6,6 +6,7 @@ go_library(
         "doc.go",
         "fake_template_client.go",
         "fake_virtualmachinetemplate.go",
+        "fake_virtualmachinetemplaterequest.go",
     ],
     importpath = "kubevirt.io/client-go/kubevirt/typed/template/v1alpha1/fake",
     visibility = ["//visibility:public"],
