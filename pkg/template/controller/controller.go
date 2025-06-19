@@ -519,7 +519,8 @@ func (c *TemplateRequestController) handleTemplate(
 			{
 				Name:        "VM_NAME",
 				Description: "Name of the Virtual Machine",
-				Required:    true,
+				From:        fmt.Sprintf("vm-%s-[a-z0-9]{16}", template.Name),
+				Generate:    "expression",
 			},
 		}
 	}
