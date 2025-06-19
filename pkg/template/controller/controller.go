@@ -39,7 +39,7 @@ func (r *RequeueError) Error() string {
 	return r.message
 }
 
-func NewRequeueError(message string, delay time.Duration) *RequeueError {
+func newRequeueError(message string, delay time.Duration) *RequeueError {
 	return &RequeueError{
 		message: message,
 		delay:   delay,
@@ -65,7 +65,7 @@ const (
 	LogLevelVerbose = 4
 
 	// Requeue delay when waiting for resources to become ready
-	RequeueDelay = 30 * time.Second
+	requeueDelay = 5 * time.Second
 )
 
 type TemplateRequestController struct {
@@ -299,10 +299,10 @@ func (c *TemplateRequestController) Sync(
 	// If we're still in progress and resources are not ready, requeue after delay
 	if templateRequest.Status.Phase == templatev1alpha1.VirtualMachineTemplateRequestPhaseInProgress {
 		if !c.isSnapshotReady(templateRequest) {
-			return NewRequeueError("Waiting for VirtualMachineSnapshot to become ready", RequeueDelay)
+			return newRequeueError("Waiting for VirtualMachineSnapshot to become ready", requeueDelay)
 		}
 		if !c.isTemplateReady(templateRequest) {
-			return NewRequeueError("Waiting for VirtualMachineTemplate to become ready", RequeueDelay)
+			return newRequeueError("Waiting for VirtualMachineTemplate to become ready", requeueDelay)
 		}
 	}
 
@@ -570,7 +570,7 @@ func (c *TemplateRequestController) checkTemplateStatus(
 			"NotFound",
 			"Template not found",
 		)
-		return fmt.Errorf("template %s not found", key)
+		return newRequeueError("template not found but referenced", requeueDelay)
 	}
 
 	c.setCondition(
