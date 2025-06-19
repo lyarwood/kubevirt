@@ -1,0 +1,50 @@
+apiVersion: template.kubevirt.io/v1alpha1
+kind: VirtualMachineTemplate
+metadata:
+  name: fedora
+spec:
+  virtualMachine:
+    apiVersion: kubevirt.io/v1
+    kind: VirtualMachine
+    metadata:
+      creationTimestamp: null
+      name: ${NAME}
+    spec:
+      runStrategy: Always
+      instancetype:
+        name: ${INSTANCE_TYPE}
+      preference:
+        name: fedora
+      dataVolumeTemplates:
+        - metadata:
+            creationTimestamp: null
+            name: fedora
+          spec:
+            source:
+              registry:
+                url: docker://quay.io/containerdisks/fedora:${FEDORA_VERSION}
+            storage:
+              resources:
+                requests:
+                  storage: 10Gi
+      template:
+        metadata:
+          creationTimestamp: null
+        spec:
+          domain:
+            devices: {}
+            resources: {}
+          volumes:
+            - dataVolume:
+                name: fedora
+              name: fedora
+          terminationGracePeriodSeconds: 180
+  parameters:
+  - description: VM name
+    from: 'fedora-[a-z0-9]{16}'
+    generate: expression
+    name: NAME
+  - name: INSTANCE_TYPE
+    value: 'u1.large'
+  - name: FEDORA_VERSION
+    value: 'latest'

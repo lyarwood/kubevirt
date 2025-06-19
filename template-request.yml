@@ -1,0 +1,9 @@
+apiVersion: template.kubevirt.io/v1alpha1
+kind: VirtualMachineTemplateRequest
+metadata:
+  name: create-fedora-template
+  namespace: default
+spec:
+  source:
+    name: fedora-$(kubectl get vm -o jsonpath='{.items[0].metadata.name}' | grep -o '[a-z0-9]\{16\}')
+    namespace: default
