@@ -74,6 +74,7 @@ import (
 	exportv1 "kubevirt.io/api/export/v1beta1"
 	poolv1 "kubevirt.io/api/pool/v1alpha1"
 	snapshotv1 "kubevirt.io/api/snapshot/v1beta1"
+	templatev1alpha1 "kubevirt.io/api/template/v1alpha1"
 	"kubevirt.io/client-go/kubecli"
 	"kubevirt.io/client-go/log"
 	clientutil "kubevirt.io/client-go/util"
@@ -285,6 +286,7 @@ func init() {
 	utilruntime.Must(exportv1.AddToScheme(scheme.Scheme))
 	utilruntime.Must(poolv1.AddToScheme(scheme.Scheme))
 	utilruntime.Must(clone.AddToScheme(scheme.Scheme))
+	utilruntime.Must(templatev1alpha1.AddToScheme(scheme.Scheme))
 }
 
 func Execute() {
