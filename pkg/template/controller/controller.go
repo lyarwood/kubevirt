@@ -28,6 +28,24 @@ import (
 	"kubevirt.io/kubevirt/pkg/virt-controller/watch/common"
 )
 
+// RequeueError is a special error type that indicates the controller should requeue
+// the item after a delay
+type RequeueError struct {
+	message string
+	delay   time.Duration
+}
+
+func (r *RequeueError) Error() string {
+	return r.message
+}
+
+func NewRequeueError(message string, delay time.Duration) *RequeueError {
+	return &RequeueError{
+		message: message,
+		delay:   delay,
+	}
+}
+
 const (
 	// Event reasons
 	SuccessSynced        = "Synced"
@@ -45,6 +63,9 @@ const (
 	// Log levels
 	LogLevelInfo    = 2
 	LogLevelVerbose = 4
+
+	// Requeue delay when waiting for resources to become ready
+	RequeueDelay = 30 * time.Second
 )
 
 type TemplateRequestController struct {
@@ -79,6 +100,7 @@ func NewTemplateRequestController(
 
 	log.Log.Info("Setting up event handlers for VirtualMachineTemplateRequest")
 
+	// Handle VirtualMachineTemplateRequest events
 	if _, err := templateRequestInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			ctrl.enqueueTemplateRequest(obj)
@@ -90,7 +112,37 @@ func NewTemplateRequestController(
 			ctrl.enqueueTemplateRequest(obj)
 		},
 	}); err != nil {
-		log.Log.Errorf("Failed to add event handler: %v", err)
+		log.Log.Errorf("Failed to add VirtualMachineTemplateRequest event handler: %v", err)
+	}
+
+	// Handle VirtualMachineSnapshot events to re-enqueue owning VirtualMachineTemplateRequest
+	if _, err := snapshotInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			ctrl.enqueueTemplateRequestForSnapshot(obj)
+		},
+		UpdateFunc: func(old, new interface{}) {
+			ctrl.enqueueTemplateRequestForSnapshot(new)
+		},
+		DeleteFunc: func(obj interface{}) {
+			ctrl.enqueueTemplateRequestForSnapshot(obj)
+		},
+	}); err != nil {
+		log.Log.Errorf("Failed to add VirtualMachineSnapshot event handler: %v", err)
+	}
+
+	// Handle VirtualMachineTemplate events to re-enqueue owning VirtualMachineTemplateRequest
+	if _, err := templateInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			ctrl.enqueueTemplateRequestForTemplate(obj)
+		},
+		UpdateFunc: func(old, new interface{}) {
+			ctrl.enqueueTemplateRequestForTemplate(new)
+		},
+		DeleteFunc: func(obj interface{}) {
+			ctrl.enqueueTemplateRequestForTemplate(obj)
+		},
+	}); err != nil {
+		log.Log.Errorf("Failed to add VirtualMachineTemplate event handler: %v", err)
 	}
 
 	return ctrl
@@ -138,6 +190,13 @@ func (c *TemplateRequestController) processNextWorkItem(ctx context.Context) boo
 		defer c.queue.Done(obj)
 
 		if err := c.syncHandler(ctx, obj); err != nil {
+			// Check if it's a requeue error
+			if requeueErr, ok := err.(*RequeueError); ok {
+				log.Log.V(LogLevelVerbose).Infof("Requeuing '%s' after %v: %s", obj, requeueErr.delay, requeueErr.message)
+				c.queue.AddAfter(obj, requeueErr.delay)
+				return nil
+			}
+			// For other errors, use rate limiting
 			c.queue.AddRateLimited(obj)
 			return fmt.Errorf("error syncing '%s': %s, requeuing", obj, err.Error())
 		}
@@ -232,7 +291,22 @@ func (c *TemplateRequestController) Sync(
 		)
 	}
 
-	return c.updateStatus(ctx, templateRequest)
+	// Update status first
+	if err := c.updateStatus(ctx, templateRequest); err != nil {
+		return err
+	}
+
+	// If we're still in progress and resources are not ready, requeue after delay
+	if templateRequest.Status.Phase == templatev1alpha1.VirtualMachineTemplateRequestPhaseInProgress {
+		if !c.isSnapshotReady(templateRequest) {
+			return NewRequeueError("Waiting for VirtualMachineSnapshot to become ready", RequeueDelay)
+		}
+		if !c.isTemplateReady(templateRequest) {
+			return NewRequeueError("Waiting for VirtualMachineTemplate to become ready", RequeueDelay)
+		}
+	}
+
+	return nil
 }
 
 func (c *TemplateRequestController) getSourceVM(
@@ -337,24 +411,59 @@ func (c *TemplateRequestController) checkSnapshotStatus(
 	}
 
 	snapshot := obj.(*snapshotv1beta1.VirtualMachineSnapshot)
+
+	// Check if snapshot is ready by examining both ReadyToUse field and conditions
+	isReady := false
+	readyReason := "InProgress"
+	readyMessage := "Snapshot creation in progress"
+
+	// Check ReadyToUse field
 	if snapshot.Status != nil && snapshot.Status.ReadyToUse != nil && *snapshot.Status.ReadyToUse {
+		isReady = true
+		readyReason = "Ready"
+		readyMessage = "Snapshot is ready"
+	}
+
+	// Also check conditions - this is the more reliable indicator
+	if snapshot.Status != nil && len(snapshot.Status.Conditions) > 0 {
+		for _, condition := range snapshot.Status.Conditions {
+			if condition.Type == snapshotv1beta1.ConditionReady {
+				if condition.Status == corev1.ConditionTrue {
+					isReady = true
+					readyReason = "Ready"
+					readyMessage = fmt.Sprintf("Snapshot condition Ready is True: %s", condition.Message)
+				} else {
+					// If Ready condition exists but is False, use its message
+					readyReason = condition.Reason
+					if condition.Message != "" {
+						readyMessage = condition.Message
+					} else {
+						readyMessage = "Snapshot not ready"
+					}
+				}
+				break
+			}
+		}
+	}
+
+	if isReady {
 		c.setCondition(
 			templateRequest,
 			templatev1alpha1.VirtualMachineTemplateRequestConditionSnapshotReady,
 			metav1.ConditionTrue,
-			"Ready",
-			"Snapshot is ready",
+			readyReason,
+			readyMessage,
 		)
-		return nil
+	} else {
+		c.setCondition(
+			templateRequest,
+			templatev1alpha1.VirtualMachineTemplateRequestConditionSnapshotReady,
+			metav1.ConditionFalse,
+			readyReason,
+			readyMessage,
+		)
 	}
 
-	c.setCondition(
-		templateRequest,
-		templatev1alpha1.VirtualMachineTemplateRequestConditionSnapshotReady,
-		metav1.ConditionFalse,
-		"InProgress",
-		"Snapshot creation in progress",
-	)
 	return nil
 }
 
@@ -568,20 +677,65 @@ func (c *TemplateRequestController) updateStatus(
 		return nil
 	}
 
-	templateRequest.Status.ObservedGeneration = templateRequest.Generation
+	// Use retry logic to handle conflicts
+	return c.updateStatusWithRetry(ctx, templateRequest)
+}
 
-	_, err = c.clientset.GeneratedKubeVirtClient().TemplateV1alpha1().
-		VirtualMachineTemplateRequests(templateRequest.Namespace).UpdateStatus(ctx, templateRequest, metav1.UpdateOptions{})
-	if err != nil {
-		c.recorder.Event(
-			templateRequest,
-			corev1.EventTypeWarning,
-			FailedUpdateStatus,
-			fmt.Sprintf("Failed to update status: %v", err),
-		)
-		return fmt.Errorf("failed to update VirtualMachineTemplateRequest status: %v", err)
-	}
-	return nil
+func (c *TemplateRequestController) updateStatusWithRetry(
+	ctx context.Context,
+	templateRequest *templatev1alpha1.VirtualMachineTemplateRequest,
+) error {
+	client := c.clientset.GeneratedKubeVirtClient().TemplateV1alpha1().VirtualMachineTemplateRequests(templateRequest.Namespace)
+
+	// Retry up to 5 times with exponential backoff
+	return wait.ExponentialBackoffWithContext(ctx, wait.Backoff{
+		Steps:    5,
+		Duration: 100 * time.Millisecond,
+		Factor:   2.0,
+		Jitter:   0.1,
+	}, func(ctx context.Context) (bool, error) {
+		// Get the latest version from the API server
+		latest, err := client.Get(ctx, templateRequest.Name, metav1.GetOptions{})
+		if err != nil {
+			if errors.IsNotFound(err) {
+				// Object was deleted, nothing to update
+				return true, nil
+			}
+			// Retry on other errors
+			return false, err
+		}
+
+		// Check if status has changed since we started
+		if equality.Semantic.DeepEqual(latest.Status, templateRequest.Status) {
+			// Status is already up to date
+			return true, nil
+		}
+
+		// Update the status on the latest version
+		latest.Status = templateRequest.Status
+		latest.Status.ObservedGeneration = latest.Generation
+
+		_, err = client.UpdateStatus(ctx, latest, metav1.UpdateOptions{})
+		if err != nil {
+			if errors.IsConflict(err) {
+				// Conflict error, retry
+				log.Log.V(LogLevelVerbose).Infof("Conflict updating VirtualMachineTemplateRequest %s/%s status, retrying",
+					templateRequest.Namespace, templateRequest.Name)
+				return false, nil
+			}
+			// Other errors should not be retried
+			c.recorder.Event(
+				templateRequest,
+				corev1.EventTypeWarning,
+				FailedUpdateStatus,
+				fmt.Sprintf("Failed to update status: %v", err),
+			)
+			return false, fmt.Errorf("failed to update VirtualMachineTemplateRequest status: %v", err)
+		}
+
+		// Success
+		return true, nil
+	})
 }
 
 func (c *TemplateRequestController) enqueueTemplateRequest(obj interface{}) {
@@ -591,4 +745,45 @@ func (c *TemplateRequestController) enqueueTemplateRequest(obj interface{}) {
 		return
 	}
 	c.queue.Add(key)
+}
+
+func (c *TemplateRequestController) enqueueTemplateRequestForSnapshot(obj interface{}) {
+	snapshot, ok := obj.(*snapshotv1beta1.VirtualMachineSnapshot)
+	if !ok {
+		log.Log.Errorf("expected VirtualMachineSnapshot, got %T", obj)
+		return
+	}
+
+	// Find the owning VirtualMachineTemplateRequest
+	ownerRef := c.getOwnerRef(snapshot.OwnerReferences, "VirtualMachineTemplateRequest")
+	if ownerRef != nil {
+		key := fmt.Sprintf("%s/%s", snapshot.Namespace, ownerRef.Name)
+		log.Log.V(LogLevelVerbose).Infof("Enqueueing VirtualMachineTemplateRequest %s due to VirtualMachineSnapshot %s change", key, snapshot.Name)
+		c.queue.Add(key)
+	}
+}
+
+func (c *TemplateRequestController) enqueueTemplateRequestForTemplate(obj interface{}) {
+	template, ok := obj.(*templatev1alpha1.VirtualMachineTemplate)
+	if !ok {
+		log.Log.Errorf("expected VirtualMachineTemplate, got %T", obj)
+		return
+	}
+
+	// Find the owning VirtualMachineTemplateRequest
+	ownerRef := c.getOwnerRef(template.OwnerReferences, "VirtualMachineTemplateRequest")
+	if ownerRef != nil {
+		key := fmt.Sprintf("%s/%s", template.Namespace, ownerRef.Name)
+		log.Log.V(LogLevelVerbose).Infof("Enqueueing VirtualMachineTemplateRequest %s due to VirtualMachineTemplate %s change", key, template.Name)
+		c.queue.Add(key)
+	}
+}
+
+func (c *TemplateRequestController) getOwnerRef(ownerRefs []metav1.OwnerReference, kind string) *metav1.OwnerReference {
+	for _, ownerRef := range ownerRefs {
+		if ownerRef.Kind == kind {
+			return &ownerRef
+		}
+	}
+	return nil
 }
