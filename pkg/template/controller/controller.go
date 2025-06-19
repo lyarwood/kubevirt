@@ -48,6 +48,23 @@ func NewRequeueError(message string, delay time.Duration) *RequeueError {
 	}
 }
 
+// SyncError represents a sync error that should be reported but not retried
+type SyncError struct {
+	message string
+	reason  string
+}
+
+func (s *SyncError) Error() string {
+	return s.message
+}
+
+func NewSyncError(message, reason string) *SyncError {
+	return &SyncError{
+		message: message,
+		reason:  reason,
+	}
+}
+
 const (
 	// Event reasons
 	SuccessSynced        = "Synced"
@@ -68,6 +85,17 @@ const (
 
 	// Requeue delay when waiting for resources to become ready
 	requeueDelay = 5 * time.Second
+
+	// Finalizer for VirtualMachineTemplateRequest
+	VirtualMachineTemplateRequestFinalizer = "virtualmachinetemplaterequest.kubevirt.io/finalizer"
+
+	// Controller name for logging
+	ControllerName = "virtualmachinetemplaterequest-controller"
+
+	// Rate limiting configuration
+	MaxRetries = 5
+	BaseDelay  = 1 * time.Second
+	MaxDelay   = 5 * time.Minute
 )
 
 type TemplateRequestController struct {
@@ -216,6 +244,10 @@ func (c *TemplateRequestController) processNextWorkItem(ctx context.Context) boo
 }
 
 func (c *TemplateRequestController) syncHandler(ctx context.Context, key string) error {
+	// Add timeout to prevent long-running operations
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		return fmt.Errorf("invalid resource key: %s", key)
@@ -235,8 +267,20 @@ func (c *TemplateRequestController) syncHandler(ctx context.Context, key string)
 	templateRequest := obj.(*templatev1alpha1.VirtualMachineTemplateRequest)
 	templateRequestCopy := templateRequest.DeepCopy()
 
+	// Check if context is cancelled before processing
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
 	err = c.Sync(ctx, templateRequestCopy)
 	if err != nil {
+		// Check if it's a sync error that shouldn't be retried
+		if syncErr, ok := err.(*SyncError); ok {
+			c.recorder.Event(templateRequestCopy, corev1.EventTypeWarning, syncErr.reason, syncErr.message)
+			return nil // Don't retry sync errors
+		}
 		c.recorder.Event(templateRequestCopy, corev1.EventTypeWarning, FailedSyncReason, err.Error())
 		return err
 	}
@@ -250,6 +294,16 @@ func (c *TemplateRequestController) Sync(
 	ctx context.Context,
 	templateRequest *templatev1alpha1.VirtualMachineTemplateRequest,
 ) error {
+	// Handle deletion
+	if templateRequest.DeletionTimestamp != nil {
+		return c.handleDeletion(ctx, templateRequest)
+	}
+
+	// Add finalizer if not present
+	if !controller.HasFinalizer(templateRequest, VirtualMachineTemplateRequestFinalizer) {
+		return c.addFinalizer(ctx, templateRequest)
+	}
+
 	// Initialize status if not set
 	if templateRequest.Status.Phase == "" {
 		templateRequest.Status.Phase = templatev1alpha1.VirtualMachineTemplateRequestPhasePending
@@ -314,6 +368,11 @@ func (c *TemplateRequestController) Sync(
 func (c *TemplateRequestController) getSourceVM(
 	templateRequest *templatev1alpha1.VirtualMachineTemplateRequest,
 ) (*virtv1.VirtualMachine, error) {
+	// Validate source specification
+	if templateRequest.Spec.Source.Name == "" {
+		return nil, NewSyncError("source name is required", "InvalidSource")
+	}
+
 	namespace := templateRequest.Spec.Source.Namespace
 	if namespace == "" {
 		namespace = templateRequest.Namespace
@@ -322,13 +381,19 @@ func (c *TemplateRequestController) getSourceVM(
 	key := fmt.Sprintf("%s/%s", namespace, templateRequest.Spec.Source.Name)
 	obj, exists, err := c.vmInformer.GetStore().GetByKey(key)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get VirtualMachine from informer: %v", err)
 	}
 	if !exists {
-		return nil, fmt.Errorf("VirtualMachine %s not found", key)
+		return nil, NewSyncError(fmt.Sprintf("VirtualMachine %s not found", key), "SourceVMNotFound")
 	}
 
 	vm := obj.(*virtv1.VirtualMachine)
+
+	// Validate VM is in a valid state for templating
+	if vm.Status.PrintableStatus == virtv1.VirtualMachineStatusCrashLoopBackOff {
+		return nil, NewSyncError(fmt.Sprintf("VirtualMachine %s is in crash loop backoff state", key), "SourceVMFailed")
+	}
+
 	return vm, nil
 }
 
@@ -1008,5 +1073,97 @@ func (c *TemplateRequestController) getOwnerRef(ownerRefs []metav1.OwnerReferenc
 			return &ownerRef
 		}
 	}
+	return nil
+}
+
+func (c *TemplateRequestController) handleDeletion(ctx context.Context, templateRequest *templatev1alpha1.VirtualMachineTemplateRequest) error {
+	logger := log.Log.Object(templateRequest).With("controller", ControllerName)
+	logger.V(LogLevelInfo).Infof("Handling deletion of VirtualMachineTemplateRequest")
+
+	// Clean up dependent resources
+	if err := c.cleanupDependentResources(ctx, templateRequest); err != nil {
+		logger.Errorf("Failed to cleanup dependent resources: %v", err)
+		// Don't return error here, we want to continue with finalizer removal
+	}
+
+	// Remove finalizer
+	controller.RemoveFinalizer(templateRequest, VirtualMachineTemplateRequestFinalizer)
+
+	// Update status to mark the request as failed
+	templateRequest.Status.Phase = templatev1alpha1.VirtualMachineTemplateRequestPhaseFailed
+	c.setCondition(
+		templateRequest,
+		templatev1alpha1.VirtualMachineTemplateRequestConditionReady,
+		metav1.ConditionFalse,
+		"Deleted",
+		"Template request is being deleted",
+	)
+
+	if updateErr := c.updateStatus(ctx, templateRequest); updateErr != nil {
+		logger.Errorf("Failed to update status during deletion: %v", updateErr)
+	}
+
+	return nil
+}
+
+func (c *TemplateRequestController) cleanupDependentResources(ctx context.Context, templateRequest *templatev1alpha1.VirtualMachineTemplateRequest) error {
+	logger := log.Log.Object(templateRequest).With("controller", ControllerName)
+
+	// Clean up VirtualMachineSnapshot if it exists
+	if templateRequest.Status.Snapshot != nil && templateRequest.Status.Snapshot.Name != "" {
+		snapshotNamespace := templateRequest.Namespace
+		if templateRequest.Status.Snapshot.Namespace != nil {
+			snapshotNamespace = *templateRequest.Status.Snapshot.Namespace
+		}
+
+		logger.V(LogLevelInfo).Infof("Cleaning up VirtualMachineSnapshot %s/%s",
+			snapshotNamespace, templateRequest.Status.Snapshot.Name)
+
+		err := c.clientset.VirtualMachineSnapshot(snapshotNamespace).Delete(
+			ctx, templateRequest.Status.Snapshot.Name, metav1.DeleteOptions{})
+		if err != nil && !errors.IsNotFound(err) {
+			logger.Errorf("Failed to delete VirtualMachineSnapshot: %v", err)
+		}
+	}
+
+	// Clean up VirtualMachineTemplate if it exists
+	if templateRequest.Status.Template != nil && templateRequest.Status.Template.Name != "" {
+		templateNamespace := templateRequest.Namespace
+		if templateRequest.Status.Template.Namespace != nil {
+			templateNamespace = *templateRequest.Status.Template.Namespace
+		}
+
+		logger.V(LogLevelInfo).Infof("Cleaning up VirtualMachineTemplate %s/%s",
+			templateNamespace, templateRequest.Status.Template.Name)
+
+		err := c.clientset.GeneratedKubeVirtClient().TemplateV1alpha1().
+			VirtualMachineTemplates(templateNamespace).Delete(
+			ctx, templateRequest.Status.Template.Name, metav1.DeleteOptions{})
+		if err != nil && !errors.IsNotFound(err) {
+			logger.Errorf("Failed to delete VirtualMachineTemplate: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func (c *TemplateRequestController) addFinalizer(ctx context.Context, templateRequest *templatev1alpha1.VirtualMachineTemplateRequest) error {
+	// Add finalizer
+	controller.AddFinalizer(templateRequest, VirtualMachineTemplateRequestFinalizer)
+
+	// Update status to mark the request as pending
+	templateRequest.Status.Phase = templatev1alpha1.VirtualMachineTemplateRequestPhasePending
+	c.setCondition(
+		templateRequest,
+		templatev1alpha1.VirtualMachineTemplateRequestConditionReady,
+		metav1.ConditionFalse,
+		"Initializing",
+		"Template request is being initialized",
+	)
+
+	if updateErr := c.updateStatus(ctx, templateRequest); updateErr != nil {
+		log.Log.Object(templateRequest).Errorf("Failed to update status: %v", updateErr)
+	}
+
 	return nil
 }
