@@ -16,6 +16,8 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 
+	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
+
 	virtv1 "kubevirt.io/api/core/v1"
 	snapshotv1beta1 "kubevirt.io/api/snapshot/v1beta1"
 	templatev1alpha1 "kubevirt.io/api/template/v1alpha1"
@@ -555,6 +557,17 @@ func (c *TemplateRequestController) handleTemplate(
 	}
 	vmCopy.Status = virtv1.VirtualMachineStatus{}
 
+	// Ensure the VM object has proper type metadata for template processing
+	vmCopy.TypeMeta = metav1.TypeMeta{
+		APIVersion: virtv1.SchemeGroupVersion.String(),
+		Kind:       "VirtualMachine",
+	}
+
+	// Rewrite DataVolumeTemplates to use VolumeSnapshots from the VirtualMachineSnapshot
+	if err := c.rewriteDataVolumeTemplatesWithSnapshots(ctx, templateRequest, vmCopy); err != nil {
+		return fmt.Errorf("failed to rewrite DataVolumeTemplates with snapshots: %v", err)
+	}
+
 	vmRaw, err := runtime.Encode(unstructured.UnstructuredJSONScheme, vmCopy)
 	if err != nil {
 		return fmt.Errorf("failed to encode VirtualMachine: %v", err)
@@ -878,6 +891,115 @@ func (c *TemplateRequestController) enqueueTemplateRequestForTemplate(obj interf
 		log.Log.V(LogLevelVerbose).Infof("Enqueueing VirtualMachineTemplateRequest %s due to VirtualMachineTemplate %s change", key, template.Name)
 		c.queue.Add(key)
 	}
+}
+
+func (c *TemplateRequestController) rewriteDataVolumeTemplatesWithSnapshots(
+	ctx context.Context,
+	templateRequest *templatev1alpha1.VirtualMachineTemplateRequest,
+	vmCopy *virtv1.VirtualMachine,
+) error {
+	// Check if we have a snapshot reference
+	if templateRequest.Status.Snapshot == nil {
+		log.Log.V(LogLevelVerbose).Infof("No snapshot reference found for template request %s/%s, skipping DataVolumeTemplate rewrite",
+			templateRequest.Namespace, templateRequest.Name)
+		return nil
+	}
+
+	// Get the VirtualMachineSnapshot
+	snapshotNamespace := templateRequest.Namespace
+	if templateRequest.Status.Snapshot.Namespace != nil {
+		snapshotNamespace = *templateRequest.Status.Snapshot.Namespace
+	}
+
+	key := fmt.Sprintf("%s/%s", snapshotNamespace, templateRequest.Status.Snapshot.Name)
+	obj, exists, err := c.snapshotInformer.GetStore().GetByKey(key)
+	if err != nil {
+		return fmt.Errorf("failed to get VirtualMachineSnapshot from informer: %v", err)
+	}
+	if !exists {
+		log.Log.V(LogLevelInfo).Infof("VirtualMachineSnapshot %s not found in informer, skipping DataVolumeTemplate rewrite", key)
+		return nil
+	}
+
+	vmSnapshot := obj.(*snapshotv1beta1.VirtualMachineSnapshot)
+
+	// Get the VirtualMachineSnapshotContent
+	if vmSnapshot.Status == nil || vmSnapshot.Status.VirtualMachineSnapshotContentName == nil {
+		log.Log.V(LogLevelInfo).Infof("VirtualMachineSnapshot %s has no content reference, skipping DataVolumeTemplate rewrite", key)
+		return nil
+	}
+
+	contentName := *vmSnapshot.Status.VirtualMachineSnapshotContentName
+	contentKey := fmt.Sprintf("%s/%s", snapshotNamespace, contentName)
+
+	// Get the content from API server since we don't have an informer for it
+	content, err := c.clientset.VirtualMachineSnapshotContent(snapshotNamespace).Get(ctx, contentName, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to get VirtualMachineSnapshotContent %s: %v", contentKey, err)
+	}
+
+	// Check if the content has VolumeBackups
+	if len(content.Spec.VolumeBackups) == 0 {
+		log.Log.V(LogLevelVerbose).Infof("VirtualMachineSnapshotContent %s has no VolumeBackups, skipping DataVolumeTemplate rewrite", contentKey)
+		return nil
+	}
+
+	// Create a map of PVC name to VolumeSnapshot name for quick lookup
+	pvcToVolumeSnapshot := make(map[string]string)
+	for _, volumeBackup := range content.Spec.VolumeBackups {
+		if volumeBackup.VolumeSnapshotName != nil {
+			pvcToVolumeSnapshot[volumeBackup.PersistentVolumeClaim.Name] = *volumeBackup.VolumeSnapshotName
+		}
+	}
+
+	// Rewrite DataVolumeTemplates in the VM spec
+	if len(vmCopy.Spec.DataVolumeTemplates) > 0 {
+		// Keep track of name changes to update volume references
+		dvtNameMapping := make(map[string]string)
+
+		for i, dvt := range vmCopy.Spec.DataVolumeTemplates {
+			// Check if this DataVolumeTemplate has a corresponding VolumeSnapshot
+			if volumeSnapshotName, exists := pvcToVolumeSnapshot[dvt.Name]; exists {
+				log.Log.V(LogLevelInfo).Infof("Rewriting DataVolumeTemplate %s to use VolumeSnapshot %s", dvt.Name, volumeSnapshotName)
+
+				// Create a new DataVolumeTemplate that uses the VolumeSnapshot as source
+				newDVT := dvt.DeepCopy()
+
+				// Prefix the name with a template parameter to avoid conflicts
+				originalName := newDVT.Name
+				newDVT.Name = fmt.Sprintf("${VM_NAME}-%s", originalName)
+				dvtNameMapping[originalName] = newDVT.Name
+
+				newDVT.Spec.Source = &cdiv1.DataVolumeSource{
+					Snapshot: &cdiv1.DataVolumeSourceSnapshot{
+						Namespace: snapshotNamespace,
+						Name:      volumeSnapshotName,
+					},
+				}
+
+				// Clear other source fields to avoid conflicts
+				newDVT.Spec.SourceRef = nil
+
+				vmCopy.Spec.DataVolumeTemplates[i] = *newDVT
+			}
+		}
+
+		// Update volume references in the VM template spec to match the new DataVolumeTemplate names
+		if vmCopy.Spec.Template != nil && vmCopy.Spec.Template.Spec.Volumes != nil {
+			for i, volume := range vmCopy.Spec.Template.Spec.Volumes {
+				if volume.DataVolume != nil {
+					if newName, exists := dvtNameMapping[volume.DataVolume.Name]; exists {
+						log.Log.V(LogLevelVerbose).Infof("Updating volume %s DataVolume reference from %s to %s",
+							volume.Name, volume.DataVolume.Name, newName)
+						vmCopy.Spec.Template.Spec.Volumes[i].DataVolume.Name = newName
+					}
+				}
+			}
+		}
+	}
+
+	log.Log.V(LogLevelInfo).Infof("Successfully rewrote DataVolumeTemplates for VM template based on VirtualMachineSnapshotContent %s", contentKey)
+	return nil
 }
 
 func (c *TemplateRequestController) getOwnerRef(ownerRefs []metav1.OwnerReference, kind string) *metav1.OwnerReference {
