@@ -39,7 +39,7 @@ func (r *RequeueError) Error() string {
 	return r.message
 }
 
-func newRequeueError(message string, delay time.Duration) *RequeueError {
+func NewRequeueError(message string, delay time.Duration) *RequeueError {
 	return &RequeueError{
 		message: message,
 		delay:   delay,
@@ -299,10 +299,10 @@ func (c *TemplateRequestController) Sync(
 	// If we're still in progress and resources are not ready, requeue after delay
 	if templateRequest.Status.Phase == templatev1alpha1.VirtualMachineTemplateRequestPhaseInProgress {
 		if !c.isSnapshotReady(templateRequest) {
-			return newRequeueError("Waiting for VirtualMachineSnapshot to become ready", requeueDelay)
+			return NewRequeueError("Waiting for VirtualMachineSnapshot to become ready", requeueDelay)
 		}
 		if !c.isTemplateReady(templateRequest) {
-			return newRequeueError("Waiting for VirtualMachineTemplate to become ready", requeueDelay)
+			return NewRequeueError("Waiting for VirtualMachineTemplate to become ready", requeueDelay)
 		}
 	}
 
@@ -368,6 +368,24 @@ func (c *TemplateRequestController) handleSnapshot(
 		return fmt.Errorf("failed to create VirtualMachineSnapshot: %v", err)
 	}
 
+	// Handle the case where snapshot already exists
+	if errors.IsAlreadyExists(err) {
+		// Try to get the existing snapshot
+		existingSnapshot, getErr := c.clientset.VirtualMachineSnapshot(templateRequest.Namespace).Get(ctx, snapshotName, metav1.GetOptions{})
+		if getErr != nil {
+			return fmt.Errorf("failed to get existing VirtualMachineSnapshot: %v", getErr)
+		}
+		createdSnapshot = existingSnapshot
+	}
+
+	// Validate created snapshot has required fields
+	if createdSnapshot.Name == "" {
+		return fmt.Errorf("created VirtualMachineSnapshot has empty name")
+	}
+	if createdSnapshot.Namespace == "" {
+		return fmt.Errorf("created VirtualMachineSnapshot has empty namespace")
+	}
+
 	// Update status with snapshot reference
 	templateRequest.Status.Snapshot = &corev1.TypedObjectReference{
 		Kind:      "VirtualMachineSnapshot",
@@ -382,6 +400,12 @@ func (c *TemplateRequestController) handleSnapshot(
 		"Creating",
 		"Snapshot is being created",
 	)
+
+	// Immediately update status to persist the snapshot reference
+	if err := c.updateStatus(ctx, templateRequest); err != nil {
+		return fmt.Errorf("failed to update status with snapshot reference: %v", err)
+	}
+
 	c.recorder.Event(templateRequest, corev1.EventTypeNormal, SnapshotCreated, "VirtualMachineSnapshot created")
 
 	return nil
@@ -394,12 +418,37 @@ func (c *TemplateRequestController) checkSnapshotStatus(
 		return nil
 	}
 
-	key := fmt.Sprintf("%s/%s", *templateRequest.Status.Snapshot.Namespace, templateRequest.Status.Snapshot.Name)
+	// Validate snapshot reference has required fields
+	if templateRequest.Status.Snapshot.Name == "" {
+		log.Log.V(LogLevelVerbose).Infof("VirtualMachineTemplateRequest %s/%s has empty snapshot name in status, clearing reference",
+			templateRequest.Namespace, templateRequest.Name)
+		templateRequest.Status.Snapshot = nil
+		c.setCondition(
+			templateRequest,
+			templatev1alpha1.VirtualMachineTemplateRequestConditionSnapshotReady,
+			metav1.ConditionFalse,
+			"InvalidReference",
+			"Snapshot reference had empty name, cleared reference",
+		)
+		return nil
+	}
+
+	// Defensive check for namespace
+	namespace := templateRequest.Namespace
+	if templateRequest.Status.Snapshot.Namespace != nil && *templateRequest.Status.Snapshot.Namespace != "" {
+		namespace = *templateRequest.Status.Snapshot.Namespace
+	}
+
+	key := fmt.Sprintf("%s/%s", namespace, templateRequest.Status.Snapshot.Name)
+	log.Log.V(LogLevelVerbose).Infof("Looking up VirtualMachineSnapshot with key: %s", key)
+
 	obj, exists, err := c.snapshotInformer.GetStore().GetByKey(key)
 	if err != nil {
 		return err
 	}
 	if !exists {
+		log.Log.V(LogLevelInfo).Infof("VirtualMachineSnapshot %s not found in informer cache, but referenced from status. Snapshot status: name=%s, namespace=%v",
+			key, templateRequest.Status.Snapshot.Name, templateRequest.Status.Snapshot.Namespace)
 		c.setCondition(
 			templateRequest,
 			templatev1alpha1.VirtualMachineTemplateRequestConditionSnapshotReady,
@@ -531,11 +580,31 @@ func (c *TemplateRequestController) handleTemplate(
 		return fmt.Errorf("failed to create VirtualMachineTemplate: %v", err)
 	}
 
+	// Handle the case where template already exists
+	if errors.IsAlreadyExists(err) {
+		// Try to get the existing template
+		existingTemplate, getErr := c.clientset.GeneratedKubeVirtClient().TemplateV1alpha1().
+			VirtualMachineTemplates(templateRequest.Namespace).Get(ctx, templateName, metav1.GetOptions{})
+		if getErr != nil {
+			return fmt.Errorf("failed to get existing VirtualMachineTemplate: %v", getErr)
+		}
+		createdTemplate = existingTemplate
+	}
+
+	// Validate created template has required fields
+	if createdTemplate.Name == "" {
+		return fmt.Errorf("created VirtualMachineTemplate has empty name")
+	}
+	if createdTemplate.Namespace == "" {
+		return fmt.Errorf("created VirtualMachineTemplate has empty namespace")
+	}
+
 	// Update status with template reference
 	templateRequest.Status.Template = &corev1.TypedObjectReference{
+		APIGroup:  pointer.P("template.kubevirt.io"),
 		Kind:      "VirtualMachineTemplate",
 		Name:      createdTemplate.Name,
-		Namespace: &createdTemplate.Namespace,
+		Namespace: pointer.P(createdTemplate.Namespace),
 	}
 
 	c.setCondition(
@@ -545,6 +614,12 @@ func (c *TemplateRequestController) handleTemplate(
 		"Created",
 		"Template created successfully",
 	)
+
+	// Immediately update status to persist the template reference
+	if err := c.updateStatus(ctx, templateRequest); err != nil {
+		return fmt.Errorf("failed to update status with template reference: %v", err)
+	}
+
 	c.recorder.Event(templateRequest, corev1.EventTypeNormal, TemplateCreated, "VirtualMachineTemplate created")
 
 	return nil
@@ -557,12 +632,37 @@ func (c *TemplateRequestController) checkTemplateStatus(
 		return nil
 	}
 
-	key := fmt.Sprintf("%s/%s", *templateRequest.Status.Template.Namespace, templateRequest.Status.Template.Name)
+	// Validate template reference has required fields
+	if templateRequest.Status.Template.Name == "" {
+		log.Log.V(LogLevelVerbose).Infof("VirtualMachineTemplateRequest %s/%s has empty template name in status, clearing reference",
+			templateRequest.Namespace, templateRequest.Name)
+		templateRequest.Status.Template = nil
+		c.setCondition(
+			templateRequest,
+			templatev1alpha1.VirtualMachineTemplateRequestConditionTemplateReady,
+			metav1.ConditionFalse,
+			"InvalidReference",
+			"Template reference had empty name, cleared reference",
+		)
+		return nil
+	}
+
+	// Defensive check for namespace
+	namespace := templateRequest.Namespace
+	if templateRequest.Status.Template.Namespace != nil && *templateRequest.Status.Template.Namespace != "" {
+		namespace = *templateRequest.Status.Template.Namespace
+	}
+
+	key := fmt.Sprintf("%s/%s", namespace, templateRequest.Status.Template.Name)
+	log.Log.V(LogLevelVerbose).Infof("Looking up VirtualMachineTemplate with key: %s", key)
+
 	_, exists, err := c.templateInformer.GetStore().GetByKey(key)
 	if err != nil {
 		return err
 	}
 	if !exists {
+		log.Log.V(LogLevelInfo).Infof("VirtualMachineTemplate %s not found in informer cache, but referenced from status. Template status: name=%s, namespace=%v",
+			key, templateRequest.Status.Template.Name, templateRequest.Status.Template.Namespace)
 		c.setCondition(
 			templateRequest,
 			templatev1alpha1.VirtualMachineTemplateRequestConditionTemplateReady,
@@ -570,7 +670,7 @@ func (c *TemplateRequestController) checkTemplateStatus(
 			"NotFound",
 			"Template not found",
 		)
-		return newRequeueError("template not found but referenced", requeueDelay)
+		return NewRequeueError(fmt.Sprintf("template %s not found within informer but referenced from status of request", key), requeueDelay)
 	}
 
 	c.setCondition(
