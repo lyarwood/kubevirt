@@ -18,7 +18,7 @@ spec:
       dataVolumeTemplates:
         - metadata:
             creationTimestamp: null
-            name: fedora
+            name: ${NAME}-fedora
           spec:
             source:
               registry:
@@ -36,8 +36,8 @@ spec:
             resources: {}
           volumes:
             - dataVolume:
-                name: fedora
-              name: fedora
+                name: ${NAME}-fedora
+              name: ${NAME}-fedora
           terminationGracePeriodSeconds: 180
   parameters:
   - description: VM name

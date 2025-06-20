@@ -31,7 +31,7 @@ Type "# 📋 Step 1: Examining the initial VirtualMachineTemplate"
 Enter
 Sleep 1s
 
-Type "cat template.yml"
+Type "yq template.yml"
 Enter
 Sleep 3s
 
@@ -57,9 +57,10 @@ Sleep 1s
 Type "kubectl apply -f template.yml"
 Enter
 Sleep 2s
-Type "virtctl process fedora INSTANCE_TYPE=u1.medium NAME=vm-from-fedora-template | kubectl apply -f -"
+Type "virtctl process fedora INSTANCE_TYPE=u1.medium FEDORA_VERSION=41 NAME=fedora | kubectl apply -f -"
 Enter
-Sleep 2s
+Type "kubectl wait vms/fedora --for=condition=Ready"
+Enter
 
 Type "# ✅ VM created successfully!"
 Enter
@@ -80,19 +81,19 @@ Type "# Let us check the VM details:"
 Enter
 Sleep 1s
 
-Type "kubectl get vms/vm-from-fedora-template"
+Type "kubectl get vms/fedora -o yaml | yq ."
 Enter
-Sleep 3s
+Sleep 10s
 
 Type ""
 Enter
 Type "# Notice how the template parameters were resolved:"
 Enter
-Type "# - NAME: Generated unique name with pattern"
+Type "# - NAME: User provided name of fedora used"
 Enter
 Type "# - INSTANCE_TYPE: Set to u1.medium as specified"
 Enter
-Type "# - FEDORA_VERSION: Used default value (latest)"
+Type "# - FEDORA_VERSION: Used user provided value of 41"
 Enter
 Sleep 3s
 
@@ -130,9 +131,7 @@ Type "spec:"
 Enter
 Type "  source:"
 Enter
-Type "    name: fedora-$(kubectl get vm -o jsonpath='{.items[0].metadata.name}' | grep -o '[a-z0-9]\{16\}')"
-Enter
-Type "    namespace: default"
+Type "    name: fedora
 Enter
 Type "EOF"
 Enter
