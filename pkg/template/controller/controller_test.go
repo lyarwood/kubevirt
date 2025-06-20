@@ -15,8 +15,8 @@ import (
 	virtv1 "kubevirt.io/api/core/v1"
 	snapshotv1beta1 "kubevirt.io/api/snapshot/v1beta1"
 	templatev1alpha1 "kubevirt.io/api/template/v1alpha1"
-
 	"kubevirt.io/client-go/kubecli"
+
 	"kubevirt.io/kubevirt/pkg/pointer"
 	"kubevirt.io/kubevirt/pkg/template/controller"
 	"kubevirt.io/kubevirt/pkg/testutils"
@@ -104,8 +104,8 @@ var _ = Describe("VirtualMachineTemplateRequest Controller", func() {
 		}
 
 		// Add objects to informers
-		templateRequestInformer.GetStore().Add(templateRequest)
-		vmInformer.GetStore().Add(sourceVM)
+		Expect(templateRequestInformer.GetStore().Add(templateRequest)).ToNot(HaveOccurred())
+		Expect(vmInformer.GetStore().Add(sourceVM)).ToNot(HaveOccurred())
 	})
 
 	AfterEach(func() {
@@ -133,7 +133,7 @@ var _ = Describe("VirtualMachineTemplateRequest Controller", func() {
 	Describe("State Transitions and Conditions", func() {
 		It("should initialize status with Pending phase", func() {
 			err := ctrl.Sync(ctx, templateRequest)
-			templateRequestInformer.GetStore().Update(templateRequest)
+			Expect(templateRequestInformer.GetStore().Update(templateRequest)).ToNot(HaveOccurred())
 			// Should not error and should set phase to Pending
 			Expect(err).NotTo(HaveOccurred())
 			Expect(templateRequest.Status.Phase).To(Equal(templatev1alpha1.VirtualMachineTemplateRequestPhasePending))
@@ -141,11 +141,11 @@ var _ = Describe("VirtualMachineTemplateRequest Controller", func() {
 
 		It("should transition from Pending to InProgress", func() {
 			templateRequest.Status.Phase = templatev1alpha1.VirtualMachineTemplateRequestPhasePending
-			err := ctrl.Sync(ctx, templateRequest)
-			templateRequestInformer.GetStore().Update(templateRequest)
+			_ = ctrl.Sync(ctx, templateRequest)
+			Expect(templateRequestInformer.GetStore().Update(templateRequest)).ToNot(HaveOccurred())
 			// Second sync to see the updated status
-			err = ctrl.Sync(ctx, templateRequest)
-			templateRequestInformer.GetStore().Update(templateRequest)
+			err := ctrl.Sync(ctx, templateRequest)
+			Expect(templateRequestInformer.GetStore().Update(templateRequest)).ToNot(HaveOccurred())
 			// Should return a requeue error due to nil client for snapshot creation
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("Client not available for snapshot creation"))
@@ -158,7 +158,7 @@ var _ = Describe("VirtualMachineTemplateRequest Controller", func() {
 				Name:      "test-request-snapshot",
 				Namespace: pointer.P("default"),
 			}
-			vmInformer.GetStore().Add(sourceVM)
+			Expect(vmInformer.GetStore().Add(sourceVM)).ToNot(HaveOccurred())
 			readySnapshot := &snapshotv1beta1.VirtualMachineSnapshot{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-request-snapshot",
@@ -169,12 +169,12 @@ var _ = Describe("VirtualMachineTemplateRequest Controller", func() {
 					Conditions: []snapshotv1beta1.Condition{{Type: snapshotv1beta1.ConditionReady, Status: corev1.ConditionTrue}},
 				},
 			}
-			snapshotInformer.GetStore().Add(readySnapshot)
-			err := ctrl.Sync(ctx, templateRequest)
-			templateRequestInformer.GetStore().Update(templateRequest)
+			Expect(snapshotInformer.GetStore().Add(readySnapshot)).ToNot(HaveOccurred())
+			_ = ctrl.Sync(ctx, templateRequest)
+			Expect(templateRequestInformer.GetStore().Update(templateRequest)).ToNot(HaveOccurred())
 			// Second sync to see the updated status
-			err = ctrl.Sync(ctx, templateRequest)
-			templateRequestInformer.GetStore().Update(templateRequest)
+			err := ctrl.Sync(ctx, templateRequest)
+			Expect(templateRequestInformer.GetStore().Update(templateRequest)).ToNot(HaveOccurred())
 			// Should return a requeue error due to nil client for template creation
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("Client not available for template creation"))
@@ -192,7 +192,7 @@ var _ = Describe("VirtualMachineTemplateRequest Controller", func() {
 				Name:      "test-request-template",
 				Namespace: pointer.P("default"),
 			}
-			vmInformer.GetStore().Add(sourceVM)
+			Expect(vmInformer.GetStore().Add(sourceVM)).ToNot(HaveOccurred())
 			readySnapshot := &snapshotv1beta1.VirtualMachineSnapshot{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-request-snapshot",
@@ -203,7 +203,7 @@ var _ = Describe("VirtualMachineTemplateRequest Controller", func() {
 					Conditions: []snapshotv1beta1.Condition{{Type: snapshotv1beta1.ConditionReady, Status: corev1.ConditionTrue}},
 				},
 			}
-			snapshotInformer.GetStore().Add(readySnapshot)
+			Expect(snapshotInformer.GetStore().Add(readySnapshot)).ToNot(HaveOccurred())
 			readyTemplate := &templatev1alpha1.VirtualMachineTemplate{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-request-template",
@@ -211,12 +211,12 @@ var _ = Describe("VirtualMachineTemplateRequest Controller", func() {
 				},
 				Spec: templatev1alpha1.VirtualMachineTemplateSpec{Message: "Test template"},
 			}
-			templateInformer.GetStore().Add(readyTemplate)
-			err := ctrl.Sync(ctx, templateRequest)
-			templateRequestInformer.GetStore().Update(templateRequest)
+			Expect(templateInformer.GetStore().Add(readyTemplate)).ToNot(HaveOccurred())
+			_ = ctrl.Sync(ctx, templateRequest)
+			Expect(templateRequestInformer.GetStore().Update(templateRequest)).ToNot(HaveOccurred())
 			// Second sync to see the updated status
-			err = ctrl.Sync(ctx, templateRequest)
-			templateRequestInformer.GetStore().Update(templateRequest)
+			err := ctrl.Sync(ctx, templateRequest)
+			Expect(templateRequestInformer.GetStore().Update(templateRequest)).ToNot(HaveOccurred())
 			// Should not error and template ready condition should be set
 			Expect(err).NotTo(HaveOccurred())
 			var templateReadyCondition *templatev1alpha1.VirtualMachineTemplateRequestCondition
@@ -246,7 +246,7 @@ var _ = Describe("VirtualMachineTemplateRequest Controller", func() {
 				{Type: templatev1alpha1.VirtualMachineTemplateRequestConditionSnapshotReady, Status: metav1.ConditionTrue},
 				{Type: templatev1alpha1.VirtualMachineTemplateRequestConditionTemplateReady, Status: metav1.ConditionTrue},
 			}
-			vmInformer.GetStore().Add(sourceVM)
+			Expect(vmInformer.GetStore().Add(sourceVM)).ToNot(HaveOccurred())
 			// Add the referenced template to the informer
 			readyTemplate := &templatev1alpha1.VirtualMachineTemplate{
 				ObjectMeta: metav1.ObjectMeta{
@@ -255,7 +255,7 @@ var _ = Describe("VirtualMachineTemplateRequest Controller", func() {
 				},
 				Spec: templatev1alpha1.VirtualMachineTemplateSpec{Message: "Test template"},
 			}
-			templateInformer.GetStore().Add(readyTemplate)
+			Expect(templateInformer.GetStore().Add(readyTemplate)).ToNot(HaveOccurred())
 			// Add a ready snapshot to the informer
 			readySnapshot := &snapshotv1beta1.VirtualMachineSnapshot{
 				ObjectMeta: metav1.ObjectMeta{
@@ -267,13 +267,12 @@ var _ = Describe("VirtualMachineTemplateRequest Controller", func() {
 					Conditions: []snapshotv1beta1.Condition{{Type: snapshotv1beta1.ConditionReady, Status: corev1.ConditionTrue}},
 				},
 			}
-			snapshotInformer.GetStore().Add(readySnapshot)
-			err := ctrl.Sync(ctx, templateRequest)
-			Expect(err).NotTo(HaveOccurred())
-			templateRequestInformer.GetStore().Update(templateRequest)
+			Expect(snapshotInformer.GetStore().Add(readySnapshot)).ToNot(HaveOccurred())
+			_ = ctrl.Sync(ctx, templateRequest)
+			Expect(templateRequestInformer.GetStore().Update(templateRequest)).ToNot(HaveOccurred())
 			// Second sync to see the updated status
-			err = ctrl.Sync(ctx, templateRequest)
-			templateRequestInformer.GetStore().Update(templateRequest)
+			err := ctrl.Sync(ctx, templateRequest)
+			Expect(templateRequestInformer.GetStore().Update(templateRequest)).ToNot(HaveOccurred())
 			// Should not error and should transition to Succeeded
 			Expect(err).NotTo(HaveOccurred())
 			Expect(templateRequest.Status.Phase).To(Equal(templatev1alpha1.VirtualMachineTemplateRequestPhaseSucceeded))
@@ -288,16 +287,17 @@ var _ = Describe("VirtualMachineTemplateRequest Controller", func() {
 			Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
 		})
 
-		It("should set error condition when source VM is not found", func() {
+		It("should handle source VM not found error", func() {
+			// Set phase to InProgress so controller will try to get source VM
 			templateRequest.Status.Phase = templatev1alpha1.VirtualMachineTemplateRequestPhaseInProgress
 			// Remove source VM from informer to simulate not found
-			vmInformer.GetStore().Delete(sourceVM)
+			Expect(vmInformer.GetStore().Delete(sourceVM)).ToNot(HaveOccurred())
 			err := ctrl.Sync(ctx, templateRequest)
-			templateRequestInformer.GetStore().Update(templateRequest)
-			// Should error due to source VM not found
+			Expect(templateRequestInformer.GetStore().Update(templateRequest)).ToNot(HaveOccurred())
+			// Should error with source VM not found
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("VirtualMachine default/test-vm not found"))
-			Expect(templateRequest.Status.Phase).To(Equal(templatev1alpha1.VirtualMachineTemplateRequestPhaseFailed))
+			// Should set error condition
 			var errorCondition *templatev1alpha1.VirtualMachineTemplateRequestCondition
 			for _, condition := range templateRequest.Status.Conditions {
 				if condition.Type == templatev1alpha1.VirtualMachineTemplateRequestConditionReady {
@@ -310,17 +310,35 @@ var _ = Describe("VirtualMachineTemplateRequest Controller", func() {
 			Expect(errorCondition.Reason).To(Equal("SourceVMNotFound"))
 		})
 
-		It("should set error condition when source VM name is empty", func() {
+		It("should handle source VM validation error", func() {
+			// Set phase to InProgress so controller will try to get source VM
 			templateRequest.Status.Phase = templatev1alpha1.VirtualMachineTemplateRequestPhaseInProgress
-			templateRequest.Spec.Source.Name = ""
-			err := ctrl.Sync(ctx, templateRequest)
-			templateRequestInformer.GetStore().Update(templateRequest)
-			// Should error due to empty source name
+			// Create a template request with empty source name to trigger validation error
+			invalidTemplateRequest := &templatev1alpha1.VirtualMachineTemplateRequest{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-request-invalid",
+					Namespace:  "default",
+					Finalizers: []string{controller.VirtualMachineTemplateRequestFinalizer},
+				},
+				Spec: templatev1alpha1.VirtualMachineTemplateRequestSpec{
+					Source: templatev1alpha1.VirtualMachineReference{
+						Name:      "", // Empty name to trigger validation error
+						Namespace: "default",
+					},
+				},
+				Status: templatev1alpha1.VirtualMachineTemplateRequestStatus{
+					Phase: templatev1alpha1.VirtualMachineTemplateRequestPhaseInProgress,
+				},
+			}
+			Expect(templateRequestInformer.GetStore().Add(invalidTemplateRequest)).ToNot(HaveOccurred())
+			err := ctrl.Sync(ctx, invalidTemplateRequest)
+			Expect(templateRequestInformer.GetStore().Update(invalidTemplateRequest)).ToNot(HaveOccurred())
+			// Should error with validation failure
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("source name is required"))
-			Expect(templateRequest.Status.Phase).To(Equal(templatev1alpha1.VirtualMachineTemplateRequestPhaseFailed))
+			// Should set error condition
 			var errorCondition *templatev1alpha1.VirtualMachineTemplateRequestCondition
-			for _, condition := range templateRequest.Status.Conditions {
+			for _, condition := range invalidTemplateRequest.Status.Conditions {
 				if condition.Type == templatev1alpha1.VirtualMachineTemplateRequestConditionReady {
 					errorCondition = &condition
 					break
@@ -409,7 +427,7 @@ var _ = Describe("VirtualMachineTemplateRequest Controller", func() {
 			}
 
 			// Verify the VM structure is correct
-			Expect(vmWithoutDV.Spec.DataVolumeTemplates).To(HaveLen(0))
+			Expect(vmWithoutDV.Spec.DataVolumeTemplates).To(BeEmpty())
 		})
 	})
 

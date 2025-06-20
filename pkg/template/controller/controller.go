@@ -81,10 +81,13 @@ const (
 
 	// Log levels
 	LogLevelInfo    = 2
-	LogLevelVerbose = 4
+	LogLevelVerbose = 3
 
 	// Requeue delay when waiting for resources to become ready
 	requeueDelay = 5 * time.Second
+
+	// Timeout for sync operations
+	syncTimeout = 30 * time.Second
 
 	// Finalizer for VirtualMachineTemplateRequest
 	VirtualMachineTemplateRequestFinalizer = "virtualmachinetemplaterequest.kubevirt.io/finalizer"
@@ -96,6 +99,9 @@ const (
 	MaxRetries = 5
 	BaseDelay  = 1 * time.Second
 	MaxDelay   = 5 * time.Minute
+
+	// Condition reasons
+	ReadyReason = "Ready"
 )
 
 type TemplateRequestController struct {
@@ -245,7 +251,7 @@ func (c *TemplateRequestController) processNextWorkItem(ctx context.Context) boo
 
 func (c *TemplateRequestController) syncHandler(ctx context.Context, key string) error {
 	// Add timeout to prevent long-running operations
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, syncTimeout)
 	defer cancel()
 
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
@@ -267,11 +273,9 @@ func (c *TemplateRequestController) syncHandler(ctx context.Context, key string)
 	templateRequest := obj.(*templatev1alpha1.VirtualMachineTemplateRequest)
 	templateRequestCopy := templateRequest.DeepCopy()
 
-	// Check if context is cancelled before processing
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	default:
+	// Check if context is canceled before processing
+	if ctx.Err() != nil {
+		return nil
 	}
 
 	err = c.Sync(ctx, templateRequestCopy)
@@ -294,12 +298,6 @@ func (c *TemplateRequestController) Sync(
 	ctx context.Context,
 	templateRequest *templatev1alpha1.VirtualMachineTemplateRequest,
 ) error {
-	// Check if client is properly initialized
-	// Temporarily commented out for testing
-	// if c.clientset == nil {
-	// 	return NewSyncError("client is not initialized", "ClientNotInitialized")
-	// }
-
 	// Handle deletion
 	if templateRequest.DeletionTimestamp != nil {
 		return c.handleDeletion(ctx, templateRequest)
@@ -317,14 +315,24 @@ func (c *TemplateRequestController) Sync(
 		return c.updateStatus(ctx, templateRequest)
 	}
 
-	// Set phase to InProgress if still pending
+	// Set phase to InProgress if still pending and persist the change
 	if templateRequest.Status.Phase == templatev1alpha1.VirtualMachineTemplateRequestPhasePending {
 		templateRequest.Status.Phase = templatev1alpha1.VirtualMachineTemplateRequestPhaseInProgress
 		if err := c.updateStatus(ctx, templateRequest); err != nil {
 			return err
 		}
+		// Return nil to allow the next sync to process the request
+		return nil
 	}
 
+	// Process the template request
+	return c.processTemplateRequest(ctx, templateRequest)
+}
+
+func (c *TemplateRequestController) processTemplateRequest(
+	ctx context.Context,
+	templateRequest *templatev1alpha1.VirtualMachineTemplateRequest,
+) error {
 	// Get the source VirtualMachine
 	vm, err := c.getSourceVM(templateRequest)
 	if err != nil {
@@ -346,31 +354,52 @@ func (c *TemplateRequestController) Sync(
 		return c.handleError(ctx, templateRequest, FailedCreateTemplate, err)
 	}
 
-	// Mark as succeeded if both snapshot and template are ready
-	if c.isSnapshotReady(templateRequest) && c.isTemplateReady(templateRequest) {
-		templateRequest.Status.Phase = templatev1alpha1.VirtualMachineTemplateRequestPhaseSucceeded
-		c.setCondition(
-			templateRequest,
-			templatev1alpha1.VirtualMachineTemplateRequestConditionReady,
-			metav1.ConditionTrue,
-			"Completed",
-			"Template request completed successfully",
-		)
+	// Check if request is complete
+	if c.isRequestComplete(templateRequest) {
+		return c.markRequestSucceeded(templateRequest)
 	}
 
-	// Update status first
+	// Update status
 	if err := c.updateStatus(ctx, templateRequest); err != nil {
 		return err
 	}
 
-	// If we're still in progress and resources are not ready, requeue after delay
-	if templateRequest.Status.Phase == templatev1alpha1.VirtualMachineTemplateRequestPhaseInProgress {
-		if !c.isSnapshotReady(templateRequest) {
-			return NewRequeueError("Waiting for VirtualMachineSnapshot to become ready", requeueDelay)
-		}
-		if !c.isTemplateReady(templateRequest) {
-			return NewRequeueError("Waiting for VirtualMachineTemplate to become ready", requeueDelay)
-		}
+	// Handle requeue logic
+	return c.handleRequeueLogic(templateRequest)
+}
+
+func (c *TemplateRequestController) isRequestComplete(
+	templateRequest *templatev1alpha1.VirtualMachineTemplateRequest,
+) bool {
+	return c.isSnapshotReady(templateRequest) && c.isTemplateReady(templateRequest)
+}
+
+func (c *TemplateRequestController) markRequestSucceeded(
+	templateRequest *templatev1alpha1.VirtualMachineTemplateRequest,
+) error {
+	templateRequest.Status.Phase = templatev1alpha1.VirtualMachineTemplateRequestPhaseSucceeded
+	c.setCondition(
+		templateRequest,
+		templatev1alpha1.VirtualMachineTemplateRequestConditionReady,
+		metav1.ConditionTrue,
+		"Completed",
+		"Template request completed successfully",
+	)
+	return nil
+}
+
+func (c *TemplateRequestController) handleRequeueLogic(
+	templateRequest *templatev1alpha1.VirtualMachineTemplateRequest,
+) error {
+	if templateRequest.Status.Phase != templatev1alpha1.VirtualMachineTemplateRequestPhaseInProgress {
+		return nil
+	}
+
+	if !c.isSnapshotReady(templateRequest) {
+		return NewRequeueError("Waiting for VirtualMachineSnapshot to become ready", requeueDelay)
+	}
+	if !c.isTemplateReady(templateRequest) {
+		return NewRequeueError("Waiting for VirtualMachineTemplate to become ready", requeueDelay)
 	}
 
 	return nil
@@ -530,7 +559,9 @@ func (c *TemplateRequestController) checkSnapshotStatus(
 		return err
 	}
 	if !exists {
-		log.Log.V(LogLevelInfo).Infof("VirtualMachineSnapshot %s not found in informer cache, but referenced from status. Snapshot status: name=%s, namespace=%v",
+		log.Log.V(LogLevelInfo).Infof(
+			"VirtualMachineSnapshot %s not found in informer cache, but referenced from status. "+
+				"Snapshot status: name=%s, namespace=%v",
 			key, templateRequest.Status.Snapshot.Name, templateRequest.Status.Snapshot.Namespace)
 		c.setCondition(
 			templateRequest,
@@ -544,16 +575,16 @@ func (c *TemplateRequestController) checkSnapshotStatus(
 
 	snapshot := obj.(*snapshotv1beta1.VirtualMachineSnapshot)
 
-	// Check if snapshot is ready by examining both ReadyToUse field and conditions
-	isReady := false
-	readyReason := "InProgress"
-	readyMessage := "Snapshot creation in progress"
-
-	// Check ReadyToUse field
-	if snapshot.Status != nil && snapshot.Status.ReadyToUse != nil && *snapshot.Status.ReadyToUse {
-		isReady = true
-		readyReason = "Ready"
-		readyMessage = "Snapshot is ready"
+	// Check if snapshot is ready
+	if snapshot.Status.ReadyToUse != nil && *snapshot.Status.ReadyToUse {
+		c.setCondition(
+			templateRequest,
+			templatev1alpha1.VirtualMachineTemplateRequestConditionSnapshotReady,
+			metav1.ConditionTrue,
+			ReadyReason,
+			"Snapshot is ready to use",
+		)
+		return nil
 	}
 
 	// Also check conditions - this is the more reliable indicator
@@ -561,39 +592,27 @@ func (c *TemplateRequestController) checkSnapshotStatus(
 		for _, condition := range snapshot.Status.Conditions {
 			if condition.Type == snapshotv1beta1.ConditionReady {
 				if condition.Status == corev1.ConditionTrue {
-					isReady = true
-					readyReason = "Ready"
-					readyMessage = fmt.Sprintf("Snapshot condition Ready is True: %s", condition.Message)
+					c.setCondition(
+						templateRequest,
+						templatev1alpha1.VirtualMachineTemplateRequestConditionSnapshotReady,
+						metav1.ConditionTrue,
+						ReadyReason,
+						fmt.Sprintf("Snapshot condition Ready is True: %s", condition.Message),
+					)
+					return nil
 				} else {
 					// If Ready condition exists but is False, use its message
-					readyReason = condition.Reason
-					if condition.Message != "" {
-						readyMessage = condition.Message
-					} else {
-						readyMessage = "Snapshot not ready"
-					}
+					c.setCondition(
+						templateRequest,
+						templatev1alpha1.VirtualMachineTemplateRequestConditionSnapshotReady,
+						metav1.ConditionFalse,
+						condition.Reason,
+						condition.Message,
+					)
 				}
 				break
 			}
 		}
-	}
-
-	if isReady {
-		c.setCondition(
-			templateRequest,
-			templatev1alpha1.VirtualMachineTemplateRequestConditionSnapshotReady,
-			metav1.ConditionTrue,
-			readyReason,
-			readyMessage,
-		)
-	} else {
-		c.setCondition(
-			templateRequest,
-			templatev1alpha1.VirtualMachineTemplateRequestConditionSnapshotReady,
-			metav1.ConditionFalse,
-			readyReason,
-			readyMessage,
-		)
 	}
 
 	return nil
@@ -619,6 +638,42 @@ func (c *TemplateRequestController) handleTemplate(
 		return NewRequeueError("Client not available for template creation", requeueDelay)
 	}
 
+	// Create template
+	createdTemplate, err := c.createTemplate(ctx, templateRequest, vm)
+	if err != nil {
+		return err
+	}
+
+	// Update status with template reference
+	templateRequest.Status.Template = &corev1.TypedObjectReference{
+		Kind:      "VirtualMachineTemplate",
+		Name:      createdTemplate.Name,
+		Namespace: &createdTemplate.Namespace,
+	}
+
+	c.setCondition(
+		templateRequest,
+		templatev1alpha1.VirtualMachineTemplateRequestConditionTemplateReady,
+		metav1.ConditionFalse,
+		"Creating",
+		"Template is being created",
+	)
+
+	// Immediately update status to persist the template reference
+	if err := c.updateStatus(ctx, templateRequest); err != nil {
+		return fmt.Errorf("failed to update status with template reference: %v", err)
+	}
+
+	c.recorder.Event(templateRequest, corev1.EventTypeNormal, TemplateCreated, "VirtualMachineTemplate created")
+
+	return nil
+}
+
+func (c *TemplateRequestController) createTemplate(
+	ctx context.Context,
+	templateRequest *templatev1alpha1.VirtualMachineTemplateRequest,
+	vm *virtv1.VirtualMachine,
+) (*templatev1alpha1.VirtualMachineTemplate, error) {
 	// Create template from VM
 	templateName := fmt.Sprintf("%s-template", templateRequest.Name)
 	template := &templatev1alpha1.VirtualMachineTemplate{
@@ -651,12 +706,12 @@ func (c *TemplateRequestController) handleTemplate(
 
 	// Rewrite DataVolumeTemplates to use VolumeSnapshots from the VirtualMachineSnapshot
 	if err := c.rewriteDataVolumeTemplatesWithSnapshots(ctx, templateRequest, vmCopy); err != nil {
-		return fmt.Errorf("failed to rewrite DataVolumeTemplates with snapshots: %v", err)
+		return nil, fmt.Errorf("failed to rewrite DataVolumeTemplates with snapshots: %v", err)
 	}
 
 	vmRaw, err := runtime.Encode(unstructured.UnstructuredJSONScheme, vmCopy)
 	if err != nil {
-		return fmt.Errorf("failed to encode VirtualMachine: %v", err)
+		return nil, fmt.Errorf("failed to encode VirtualMachine: %v", err)
 	}
 
 	template.Spec.VirtualMachine = runtime.RawExtension{Raw: vmRaw}
@@ -676,7 +731,7 @@ func (c *TemplateRequestController) handleTemplate(
 	createdTemplate, err := c.clientset.GeneratedKubeVirtClient().TemplateV1alpha1().
 		VirtualMachineTemplates(templateRequest.Namespace).Create(ctx, template, metav1.CreateOptions{})
 	if err != nil && !errors.IsAlreadyExists(err) {
-		return fmt.Errorf("failed to create VirtualMachineTemplate: %v", err)
+		return nil, fmt.Errorf("failed to create VirtualMachineTemplate: %v", err)
 	}
 
 	// Handle the case where template already exists
@@ -685,42 +740,20 @@ func (c *TemplateRequestController) handleTemplate(
 		existingTemplate, getErr := c.clientset.GeneratedKubeVirtClient().TemplateV1alpha1().
 			VirtualMachineTemplates(templateRequest.Namespace).Get(ctx, templateName, metav1.GetOptions{})
 		if getErr != nil {
-			return fmt.Errorf("failed to get existing VirtualMachineTemplate: %v", getErr)
+			return nil, fmt.Errorf("failed to get existing VirtualMachineTemplate: %v", getErr)
 		}
 		createdTemplate = existingTemplate
 	}
 
 	// Validate created template has required fields
 	if createdTemplate.Name == "" {
-		return fmt.Errorf("created VirtualMachineTemplate has empty name")
+		return nil, fmt.Errorf("created VirtualMachineTemplate has empty name")
 	}
 	if createdTemplate.Namespace == "" {
-		return fmt.Errorf("created VirtualMachineTemplate has empty namespace")
+		return nil, fmt.Errorf("created VirtualMachineTemplate has empty namespace")
 	}
 
-	// Update status with template reference
-	templateRequest.Status.Template = &corev1.TypedObjectReference{
-		Kind:      "VirtualMachineTemplate",
-		Name:      createdTemplate.Name,
-		Namespace: &createdTemplate.Namespace,
-	}
-
-	c.setCondition(
-		templateRequest,
-		templatev1alpha1.VirtualMachineTemplateRequestConditionTemplateReady,
-		metav1.ConditionFalse,
-		"Creating",
-		"Template is being created",
-	)
-
-	// Immediately update status to persist the template reference
-	if err := c.updateStatus(ctx, templateRequest); err != nil {
-		return fmt.Errorf("failed to update status with template reference: %v", err)
-	}
-
-	c.recorder.Event(templateRequest, corev1.EventTypeNormal, TemplateCreated, "VirtualMachineTemplate created")
-
-	return nil
+	return createdTemplate, nil
 }
 
 func (c *TemplateRequestController) checkTemplateStatus(
@@ -759,7 +792,9 @@ func (c *TemplateRequestController) checkTemplateStatus(
 		return err
 	}
 	if !exists {
-		log.Log.V(LogLevelInfo).Infof("VirtualMachineTemplate %s not found in informer cache, but referenced from status. Template status: name=%s, namespace=%v",
+		log.Log.V(LogLevelInfo).Infof(
+			"VirtualMachineTemplate %s not found in informer cache, but referenced from status. "+
+				"Template status: name=%s, namespace=%v",
 			key, templateRequest.Status.Template.Name, templateRequest.Status.Template.Namespace)
 		c.setCondition(
 			templateRequest,
@@ -890,7 +925,9 @@ func (c *TemplateRequestController) updateStatusWithRetry(
 	// Skip status update if client is nil (for testing)
 	if c.clientset == nil {
 		// For testing, update the informer cache so tests can see the status changes
-		c.templateRequestInformer.GetStore().Update(templateRequest)
+		if err := c.templateRequestInformer.GetStore().Update(templateRequest); err != nil {
+			return fmt.Errorf("failed to update template request in informer cache: %v", err)
+		}
 		return nil
 	}
 
@@ -967,7 +1004,9 @@ func (c *TemplateRequestController) enqueueTemplateRequestForSnapshot(obj interf
 	ownerRef := c.getOwnerRef(snapshot.OwnerReferences, "VirtualMachineTemplateRequest")
 	if ownerRef != nil {
 		key := fmt.Sprintf("%s/%s", snapshot.Namespace, ownerRef.Name)
-		log.Log.V(LogLevelVerbose).Infof("Enqueueing VirtualMachineTemplateRequest %s due to VirtualMachineSnapshot %s change", key, snapshot.Name)
+		log.Log.V(LogLevelVerbose).Infof(
+			"Enqueueing VirtualMachineTemplateRequest %s due to VirtualMachineSnapshot %s change",
+			key, snapshot.Name)
 		c.queue.Add(key)
 	}
 }
@@ -983,7 +1022,9 @@ func (c *TemplateRequestController) enqueueTemplateRequestForTemplate(obj interf
 	ownerRef := c.getOwnerRef(template.OwnerReferences, "VirtualMachineTemplateRequest")
 	if ownerRef != nil {
 		key := fmt.Sprintf("%s/%s", template.Namespace, ownerRef.Name)
-		log.Log.V(LogLevelVerbose).Infof("Enqueueing VirtualMachineTemplateRequest %s due to VirtualMachineTemplate %s change", key, template.Name)
+		log.Log.V(LogLevelVerbose).Infof(
+			"Enqueueing VirtualMachineTemplateRequest %s due to VirtualMachineTemplate %s change",
+			key, template.Name)
 		c.queue.Add(key)
 	}
 }
@@ -1054,38 +1095,49 @@ func (c *TemplateRequestController) rewriteDataVolumeTemplatesWithSnapshots(
 	}
 
 	// Rewrite DataVolumeTemplates in the VM spec
-	if len(vmCopy.Spec.DataVolumeTemplates) > 0 {
-		// Keep track of name changes to update volume references
-		dvtNameMapping := make(map[string]string)
+	return c.rewriteDataVolumeTemplates(vmCopy, pvcToVolumeSnapshot)
+}
 
-		for i, dvt := range vmCopy.Spec.DataVolumeTemplates {
-			// Check if this DataVolumeTemplate has a corresponding VolumeSnapshot
-			if volumeSnapshotName, exists := pvcToVolumeSnapshot[dvt.Name]; exists {
-				log.Log.V(LogLevelInfo).Infof("Rewriting DataVolumeTemplate %s to use VolumeSnapshot %s", dvt.Name, volumeSnapshotName)
+func (c *TemplateRequestController) rewriteDataVolumeTemplates(
+	vmCopy *virtv1.VirtualMachine,
+	pvcToVolumeSnapshot map[string]string,
+) error {
+	if len(vmCopy.Spec.DataVolumeTemplates) == 0 {
+		return nil
+	}
 
-				// Create a new DataVolumeTemplate that uses the VolumeSnapshot as source
-				newDVT := dvt.DeepCopy()
+	// Keep track of name changes to update volume references
+	dvtNameMapping := make(map[string]string)
 
-				// Prefix the name with a template parameter to avoid conflicts
-				originalName := newDVT.Name
-				newDVT.Name = fmt.Sprintf("${VM_NAME}-%s", originalName)
-				dvtNameMapping[originalName] = newDVT.Name
+	for i, dvt := range vmCopy.Spec.DataVolumeTemplates {
+		// Check if this DataVolumeTemplate has a corresponding VolumeSnapshot
+		volumeSnapshotName, exists := pvcToVolumeSnapshot[dvt.Name]
+		if !exists {
+			continue
+		}
+		log.Log.V(LogLevelInfo).Infof("Rewriting DataVolumeTemplate %s to use VolumeSnapshot %s", dvt.Name, volumeSnapshotName)
 
-				newDVT.Spec.Source = &cdiv1.DataVolumeSource{
-					Snapshot: &cdiv1.DataVolumeSourceSnapshot{
-						Name: volumeSnapshotName,
-					},
-				}
+		// Create a new DataVolumeTemplate that uses the VolumeSnapshot as source
+		newDVT := dvt.DeepCopy()
 
-				// Update the DataVolumeTemplate in the VM spec
-				vmCopy.Spec.DataVolumeTemplates[i] = *newDVT
+		// Prefix the name with a template parameter to avoid conflicts
+		originalName := newDVT.Name
+		newDVT.Name = fmt.Sprintf("${VM_NAME}-%s", originalName)
+		dvtNameMapping[originalName] = newDVT.Name
 
-				// Update volume references in the VM template spec
-				for j, volume := range vmCopy.Spec.Template.Spec.Volumes {
-					if volume.DataVolume != nil && volume.DataVolume.Name == originalName {
-						vmCopy.Spec.Template.Spec.Volumes[j].DataVolume.Name = newDVT.Name
-					}
-				}
+		newDVT.Spec.Source = &cdiv1.DataVolumeSource{
+			Snapshot: &cdiv1.DataVolumeSourceSnapshot{
+				Name: volumeSnapshotName,
+			},
+		}
+
+		// Update the DataVolumeTemplate in the VM spec
+		vmCopy.Spec.DataVolumeTemplates[i] = *newDVT
+
+		// Update volume references in the VM template spec
+		for j, volume := range vmCopy.Spec.Template.Spec.Volumes {
+			if volume.DataVolume != nil && volume.DataVolume.Name == originalName {
+				vmCopy.Spec.Template.Spec.Volumes[j].DataVolume.Name = newDVT.Name
 			}
 		}
 	}
@@ -1102,7 +1154,10 @@ func (c *TemplateRequestController) getOwnerRef(ownerRefs []metav1.OwnerReferenc
 	return nil
 }
 
-func (c *TemplateRequestController) handleDeletion(ctx context.Context, templateRequest *templatev1alpha1.VirtualMachineTemplateRequest) error {
+func (c *TemplateRequestController) handleDeletion(
+	ctx context.Context,
+	templateRequest *templatev1alpha1.VirtualMachineTemplateRequest,
+) error {
 	logger := log.Log.Object(templateRequest).With("controller", ControllerName)
 	logger.V(LogLevelInfo).Infof("Handling deletion of VirtualMachineTemplateRequest")
 
@@ -1132,7 +1187,10 @@ func (c *TemplateRequestController) handleDeletion(ctx context.Context, template
 	return nil
 }
 
-func (c *TemplateRequestController) cleanupDependentResources(ctx context.Context, templateRequest *templatev1alpha1.VirtualMachineTemplateRequest) error {
+func (c *TemplateRequestController) cleanupDependentResources(
+	ctx context.Context,
+	templateRequest *templatev1alpha1.VirtualMachineTemplateRequest,
+) error {
 	logger := log.Log.Object(templateRequest).With("controller", ControllerName)
 
 	// Clean up VirtualMachineSnapshot if it exists
@@ -1173,19 +1231,24 @@ func (c *TemplateRequestController) cleanupDependentResources(ctx context.Contex
 	return nil
 }
 
-func (c *TemplateRequestController) addFinalizer(ctx context.Context, templateRequest *templatev1alpha1.VirtualMachineTemplateRequest) error {
+func (c *TemplateRequestController) addFinalizer(
+	ctx context.Context,
+	templateRequest *templatev1alpha1.VirtualMachineTemplateRequest,
+) error {
 	// Add finalizer
 	controller.AddFinalizer(templateRequest, VirtualMachineTemplateRequestFinalizer)
 
-	// Update status to mark the request as pending
-	templateRequest.Status.Phase = templatev1alpha1.VirtualMachineTemplateRequestPhasePending
-	c.setCondition(
-		templateRequest,
-		templatev1alpha1.VirtualMachineTemplateRequestConditionReady,
-		metav1.ConditionFalse,
-		"Initializing",
-		"Template request is being initialized",
-	)
+	// Only set phase to Pending if it's not already set
+	if templateRequest.Status.Phase == "" {
+		templateRequest.Status.Phase = templatev1alpha1.VirtualMachineTemplateRequestPhasePending
+		c.setCondition(
+			templateRequest,
+			templatev1alpha1.VirtualMachineTemplateRequestConditionReady,
+			metav1.ConditionFalse,
+			"Initializing",
+			"Template request is being initialized",
+		)
+	}
 
 	if updateErr := c.updateStatus(ctx, templateRequest); updateErr != nil {
 		log.Log.Object(templateRequest).Errorf("Failed to update status: %v", updateErr)
