@@ -545,4 +545,34 @@ var _ = Describe("instancetype.spec.CPU and preference.spec.CPU", func() {
 			},
 		}))
 	})
+
+	DescribeTable("dedicatedCPUPlacement and isolateEmulatorThread conflict detection",
+		func(
+			instancetypeDedicatedCPUPlacement,
+			instancetypeIsolateEmulatorThread,
+			vmiDedicatedCPUPlacement,
+			vmiIsolateEmulatorThread *bool,
+			expectedConflicts int,
+		) {
+			instancetypeSpec.CPU.DedicatedCPUPlacement = instancetypeDedicatedCPUPlacement
+			instancetypeSpec.CPU.IsolateEmulatorThread = instancetypeIsolateEmulatorThread
+			if vmi.Spec.Domain.CPU == nil {
+				vmi.Spec.Domain.CPU = &virtv1.CPU{}
+			}
+			if vmiDedicatedCPUPlacement != nil {
+				vmi.Spec.Domain.CPU.DedicatedCPUPlacement = *vmiDedicatedCPUPlacement
+			}
+			if vmiIsolateEmulatorThread != nil {
+				vmi.Spec.Domain.CPU.IsolateEmulatorThread = *vmiIsolateEmulatorThread
+			}
+
+			conflicts := vmiApplier.ApplyToVMI(field, instancetypeSpec, preferenceSpec, &vmi.Spec, &vmi.ObjectMeta)
+			Expect(conflicts).To(HaveLen(expectedConflicts))
+		},
+		Entry("should not conflict when VMI is unset", nil, nil, nil, nil, 0),
+		Entry("should conflict when VMI has dedicatedCPUPlacement set to true", pointer.P(true), nil, pointer.P(true), nil, 1),
+		Entry("should not conflict when VMI has dedicatedCPUPlacement set to false", pointer.P(true), nil, pointer.P(false), nil, 0),
+		Entry("should conflict when VMI has isolateEmulatorThread set to true", nil, pointer.P(true), nil, pointer.P(true), 1),
+		Entry("should not conflict when VMI has isolateEmulatorThread set to false", nil, pointer.P(true), nil, pointer.P(false), 0),
+	)
 })
