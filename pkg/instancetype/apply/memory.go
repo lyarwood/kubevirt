@@ -33,22 +33,37 @@ func applyMemory(
 	instancetypeSpec *v1beta1.VirtualMachineInstancetypeSpec,
 	vmiSpec *virtv1.VirtualMachineInstanceSpec,
 ) conflict.Conflicts {
+	conflicts := conflict.Conflicts{}
+
 	if vmiSpec.Domain.Memory != nil {
-		return conflict.Conflicts{baseConflict.NewChild("domain", "memory")}
+		if vmiSpec.Domain.Memory.Guest != nil {
+			conflicts = append(conflicts, baseConflict.NewChild("domain", "memory", "guest"))
+		}
+		if vmiSpec.Domain.Memory.Hugepages != nil {
+			conflicts = append(conflicts, baseConflict.NewChild("domain", "memory", "hugepages"))
+		}
+		if vmiSpec.Domain.Memory.MaxGuest != nil {
+			conflicts = append(conflicts, baseConflict.NewChild("domain", "memory", "maxGuest"))
+		}
 	}
 
 	if _, hasMemoryRequests := vmiSpec.Domain.Resources.Requests[k8sv1.ResourceMemory]; hasMemoryRequests {
-		return conflict.Conflicts{baseConflict.NewChild("domain", "resources", "requests", string(k8sv1.ResourceMemory))}
+		conflicts = append(conflicts, baseConflict.NewChild("domain", "resources", "requests", string(k8sv1.ResourceMemory)))
 	}
 
 	if _, hasMemoryLimits := vmiSpec.Domain.Resources.Limits[k8sv1.ResourceMemory]; hasMemoryLimits {
-		return conflict.Conflicts{baseConflict.NewChild("domain", "resources", "limits", string(k8sv1.ResourceMemory))}
+		conflicts = append(conflicts, baseConflict.NewChild("domain", "resources", "limits", string(k8sv1.ResourceMemory)))
+	}
+
+	if len(conflicts) > 0 {
+		return conflicts
 	}
 
 	instancetypeMemory := instancetypeSpec.Memory.Guest.DeepCopy()
-	vmiSpec.Domain.Memory = &virtv1.Memory{
-		Guest: &instancetypeMemory,
+	if vmiSpec.Domain.Memory == nil {
+		vmiSpec.Domain.Memory = &virtv1.Memory{}
 	}
+	vmiSpec.Domain.Memory.Guest = &instancetypeMemory
 
 	// If memory overcommit has been requested, set the memory requests to be
 	// lower than the guest memory by the requested percent.
