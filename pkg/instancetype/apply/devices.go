@@ -19,16 +19,25 @@
 package apply
 
 import (
-	virtv1 "kubevirt.io/api/core/v1"
-	v1beta1 "kubevirt.io/api/instancetype/v1beta1"
-
 	"kubevirt.io/kubevirt/pkg/instancetype/conflict"
 )
 
-func applyHostDevices(
+func applyDeviceSlice[T any](
 	baseConflict *conflict.Conflict,
-	instancetypeSpec *v1beta1.VirtualMachineInstancetypeSpec,
-	vmiSpec *virtv1.VirtualMachineInstanceSpec,
+	instancetypeDevices []T,
+	vmiDevices *[]T,
+	fieldName string,
 ) conflict.Conflicts {
-	return applyDeviceSlice(baseConflict, instancetypeSpec.HostDevices, &vmiSpec.Domain.Devices.HostDevices, "hostDevices")
+	if len(instancetypeDevices) == 0 {
+		return nil
+	}
+
+	if len(*vmiDevices) > 0 {
+		return conflict.Conflicts{baseConflict.NewChild("domain", "devices", fieldName)}
+	}
+
+	*vmiDevices = make([]T, len(instancetypeDevices))
+	copy(*vmiDevices, instancetypeDevices)
+
+	return nil
 }

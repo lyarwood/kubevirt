@@ -30,16 +30,5 @@ func applyGPUs(
 	instancetypeSpec *v1beta1.VirtualMachineInstancetypeSpec,
 	vmiSpec *virtv1.VirtualMachineInstanceSpec,
 ) conflict.Conflicts {
-	if len(instancetypeSpec.GPUs) == 0 {
-		return nil
-	}
-
-	if len(vmiSpec.Domain.Devices.GPUs) > 0 {
-		return conflict.Conflicts{baseConflict.NewChild("domain", "devices", "gpus")}
-	}
-
-	vmiSpec.Domain.Devices.GPUs = make([]virtv1.GPU, len(instancetypeSpec.GPUs))
-	copy(vmiSpec.Domain.Devices.GPUs, instancetypeSpec.GPUs)
-
-	return nil
+	return applyDeviceSlice(baseConflict, instancetypeSpec.GPUs, &vmiSpec.Domain.Devices.GPUs, "gpus")
 }

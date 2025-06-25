@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "annotations.go",
         "cpu.go",
+        "devices.go",
         "gpu.go",
         "hostdevices.go",
         "iothreadpolicy.go",
@@ -35,8 +36,7 @@ go_test(
         "annotations_test.go",
         "apply_suite_test.go",
         "cpu_test.go",
-        "gpu_test.go",
-        "hostdevices_test.go",
+        "devices_test.go",
         "iothreadpolicy_test.go",
         "launchsecurity_test.go",
         "memory_test.go",
