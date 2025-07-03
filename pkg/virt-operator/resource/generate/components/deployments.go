@@ -22,6 +22,7 @@ package components
 import (
 	"fmt"
 	"path"
+	"slices"
 	"strings"
 
 	networkv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
@@ -642,12 +643,25 @@ func NewOperatorDeployment(namespace, repository, imagePrefix, version, verbosit
 	}
 	deployment.Spec.Template.Annotations["openshift.io/required-scc"] = "restricted-v2"
 
-	envVars := generateVirtOperatorEnvVars(
-		runbookURLTemplate, virtApiImageEnv, virtControllerImageEnv, virtHandlerImageEnv, virtLauncherImageEnv, virtExportProxyImageEnv,
-		virtExportServerImageEnv, virtSynchronizationControllerImageEnv, gsImage, prHelperImage, sidecarShimImage, kubeVirtVersionEnv,
-	)
-
-	if envVars != nil {
+	envVars := []corev1.EnvVar{
+		{Name: operatorutil.VirtApiImageEnvName, Value: virtApiImageEnv},
+		{Name: operatorutil.VirtControllerImageEnvName, Value: virtControllerImageEnv},
+		{Name: operatorutil.VirtHandlerImageEnvName, Value: virtHandlerImageEnv},
+		{Name: operatorutil.VirtLauncherImageEnvName, Value: virtLauncherImageEnv},
+		{Name: operatorutil.VirtExportProxyImageEnvName, Value: virtExportProxyImageEnv},
+		{Name: operatorutil.VirtExportServerImageEnvName, Value: virtExportServerImageEnv},
+		{Name: operatorutil.VirtSynchronizationControllerImageEnvName, Value: virtSynchronizationControllerImageEnv},
+		{Name: operatorutil.GsImageEnvName, Value: gsImage},
+		{Name: operatorutil.RunbookURLTemplate, Value: runbookURLTemplate},
+		{Name: operatorutil.PrHelperImageEnvName, Value: prHelperImage},
+		{Name: operatorutil.SidecarShimImageEnvName, Value: sidecarShimImage},
+		{Name: operatorutil.KubeVirtVersionEnvName, Value: kubeVirtVersionEnv},
+	}
+	// Remove anything without a value provided from the slice
+	envVars = slices.DeleteFunc(envVars, func(e corev1.EnvVar) bool {
+		return e.Value == ""
+	})
+	if len(envVars) > 0 {
 		deployment.Spec.Template.Spec.Containers[0].Env = append(deployment.Spec.Template.Spec.Containers[0].Env, envVars...)
 	}
 
@@ -869,64 +883,4 @@ func NewPodDisruptionBudgetForDeployment(deployment *appsv1.Deployment) *policyv
 		},
 	}
 	return podDisruptionBudget
-}
-
-func generateVirtOperatorEnvVars(runbookURLTemplate, virtApiImageEnv, virtControllerImageEnv, virtHandlerImageEnv, virtLauncherImageEnv, virtExportProxyImageEnv,
-	virtExportServerImageEnv, virtSynchronizationControllerImageEnv, gsImage, prHelperImage, sidecarShimImage, kubeVirtVersionEnv string) (envVars []corev1.EnvVar) {
-
-	addEnvVar := func(envVarName, envVarValue string) {
-		envVars = append(envVars, corev1.EnvVar{
-			Name:  envVarName,
-			Value: envVarValue,
-		})
-	}
-
-	if virtApiImageEnv != "" {
-		addEnvVar(operatorutil.VirtApiImageEnvName, virtApiImageEnv)
-	}
-
-	if virtControllerImageEnv != "" {
-		addEnvVar(operatorutil.VirtControllerImageEnvName, virtControllerImageEnv)
-	}
-
-	if virtHandlerImageEnv != "" {
-		addEnvVar(operatorutil.VirtHandlerImageEnvName, virtHandlerImageEnv)
-	}
-
-	if virtLauncherImageEnv != "" {
-		addEnvVar(operatorutil.VirtLauncherImageEnvName, virtLauncherImageEnv)
-	}
-
-	if virtExportProxyImageEnv != "" {
-		addEnvVar(operatorutil.VirtExportProxyImageEnvName, virtExportProxyImageEnv)
-	}
-
-	if virtExportServerImageEnv != "" {
-		addEnvVar(operatorutil.VirtExportServerImageEnvName, virtExportServerImageEnv)
-	}
-
-	if virtSynchronizationControllerImageEnv != "" {
-		addEnvVar(operatorutil.VirtSynchronizationControllerImageEnvName, virtSynchronizationControllerImageEnv)
-	}
-
-	if gsImage != "" {
-		addEnvVar(operatorutil.GsImageEnvName, gsImage)
-	}
-
-	if runbookURLTemplate != "" {
-		addEnvVar(operatorutil.RunbookURLTemplate, runbookURLTemplate)
-	}
-	if prHelperImage != "" {
-		addEnvVar(operatorutil.PrHelperImageEnvName, prHelperImage)
-	}
-
-	if sidecarShimImage != "" {
-		addEnvVar(operatorutil.SidecarShimImageEnvName, sidecarShimImage)
-	}
-
-	if kubeVirtVersionEnv != "" {
-		addEnvVar(operatorutil.KubeVirtVersionEnvName, kubeVirtVersionEnv)
-	}
-
-	return envVars
 }
