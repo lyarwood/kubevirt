@@ -32,7 +32,6 @@ import (
 	kubevirtv1 "kubevirt.io/client-go/kubevirt/typed/core/v1"
 	exportv1alpha1 "kubevirt.io/client-go/kubevirt/typed/export/v1alpha1"
 	exportv1beta1 "kubevirt.io/client-go/kubevirt/typed/export/v1beta1"
-	instancetypev1alpha1 "kubevirt.io/client-go/kubevirt/typed/instancetype/v1alpha1"
 	instancetypev1alpha2 "kubevirt.io/client-go/kubevirt/typed/instancetype/v1alpha2"
 	instancetypev1beta1 "kubevirt.io/client-go/kubevirt/typed/instancetype/v1beta1"
 	migrationsv1alpha1 "kubevirt.io/client-go/kubevirt/typed/migrations/v1alpha1"
@@ -48,7 +47,6 @@ type Interface interface {
 	KubevirtV1() kubevirtv1.KubevirtV1Interface
 	ExportV1alpha1() exportv1alpha1.ExportV1alpha1Interface
 	ExportV1beta1() exportv1beta1.ExportV1beta1Interface
-	InstancetypeV1alpha1() instancetypev1alpha1.InstancetypeV1alpha1Interface
 	InstancetypeV1alpha2() instancetypev1alpha2.InstancetypeV1alpha2Interface
 	InstancetypeV1beta1() instancetypev1beta1.InstancetypeV1beta1Interface
 	MigrationsV1alpha1() migrationsv1alpha1.MigrationsV1alpha1Interface
@@ -65,7 +63,6 @@ type Clientset struct {
 	kubevirtV1           *kubevirtv1.KubevirtV1Client
 	exportV1alpha1       *exportv1alpha1.ExportV1alpha1Client
 	exportV1beta1        *exportv1beta1.ExportV1beta1Client
-	instancetypeV1alpha1 *instancetypev1alpha1.InstancetypeV1alpha1Client
 	instancetypeV1alpha2 *instancetypev1alpha2.InstancetypeV1alpha2Client
 	instancetypeV1beta1  *instancetypev1beta1.InstancetypeV1beta1Client
 	migrationsV1alpha1   *migrationsv1alpha1.MigrationsV1alpha1Client
@@ -99,10 +96,6 @@ func (c *Clientset) ExportV1beta1() exportv1beta1.ExportV1beta1Interface {
 	return c.exportV1beta1
 }
 
-// InstancetypeV1alpha1 retrieves the InstancetypeV1alpha1Client
-func (c *Clientset) InstancetypeV1alpha1() instancetypev1alpha1.InstancetypeV1alpha1Interface {
-	return c.instancetypeV1alpha1
-}
 
 // InstancetypeV1alpha2 retrieves the InstancetypeV1alpha2Client
 func (c *Clientset) InstancetypeV1alpha2() instancetypev1alpha2.InstancetypeV1alpha2Interface {
@@ -198,10 +191,6 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 	if err != nil {
 		return nil, err
 	}
-	cs.instancetypeV1alpha1, err = instancetypev1alpha1.NewForConfigAndClient(&configShallowCopy, httpClient)
-	if err != nil {
-		return nil, err
-	}
 	cs.instancetypeV1alpha2, err = instancetypev1alpha2.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
@@ -252,7 +241,6 @@ func New(c rest.Interface) *Clientset {
 	cs.kubevirtV1 = kubevirtv1.New(c)
 	cs.exportV1alpha1 = exportv1alpha1.New(c)
 	cs.exportV1beta1 = exportv1beta1.New(c)
-	cs.instancetypeV1alpha1 = instancetypev1alpha1.New(c)
 	cs.instancetypeV1alpha2 = instancetypev1alpha2.New(c)
 	cs.instancetypeV1beta1 = instancetypev1beta1.New(c)
 	cs.migrationsV1alpha1 = migrationsv1alpha1.New(c)
