@@ -18,6 +18,7 @@ linters:
     - gosec
     - govet
     - ineffassign
+    - kubeapilinter
     - lll
     - misspell
     - mnd
@@ -30,6 +31,14 @@ linters:
     - unused
     - whitespace
   settings:
+    custom:
+      kubeapilinter:
+        path: "bin/kube-api-linter.so"
+        description: "Kube API Linter lints Kube like APIs based on API conventions"
+        original-url: sigs.k8s.io/kube-api-linter
+        settings:
+          linters: {}
+          lintersConfig: {}
     dupl:
       threshold: 100
     funlen:

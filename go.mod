@@ -1,6 +1,8 @@
 module kubevirt.io/kubevirt
 
-go 1.23.0
+go 1.24.0
+
+toolchain go1.24.5
 
 require (
 	github.com/cheggaaa/pb/v3 v3.1.0
@@ -16,7 +18,7 @@ require (
 	github.com/go-openapi/validate v0.24.0
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/protobuf v1.5.4
-	github.com/google/go-cmp v0.6.0
+	github.com/google/go-cmp v0.7.0
 	github.com/google/go-github/v32 v32.0.0
 	github.com/google/goexpect v0.0.0-20190425035906-112704a48083
 	github.com/google/gofuzz v1.2.0
@@ -37,8 +39,8 @@ require (
 	github.com/moby/sys/mountinfo v0.7.2
 	github.com/nunnatsa/ginkgolinter v0.14.0
 	github.com/nxadm/tail v1.4.8
-	github.com/onsi/ginkgo/v2 v2.22.1
-	github.com/onsi/gomega v1.36.2
+	github.com/onsi/ginkgo/v2 v2.23.3
+	github.com/onsi/gomega v1.36.3
 	github.com/opencontainers/runc v1.1.14
 	github.com/opencontainers/selinux v1.11.0
 	github.com/openshift/api v0.0.0
@@ -58,13 +60,13 @@ require (
 	github.com/vishvananda/netlink v1.3.0
 	github.com/wadey/gocovmerge v0.0.0-20160331181800-b5bfa59ec0ad
 	go.uber.org/mock v0.5.1
-	golang.org/x/crypto v0.36.0
-	golang.org/x/net v0.38.0
-	golang.org/x/sync v0.12.0
-	golang.org/x/sys v0.31.0
-	golang.org/x/term v0.30.0
+	golang.org/x/crypto v0.37.0
+	golang.org/x/net v0.39.0
+	golang.org/x/sync v0.13.0
+	golang.org/x/sys v0.32.0
+	golang.org/x/term v0.31.0
 	golang.org/x/time v0.7.0
-	golang.org/x/tools v0.28.0
+	golang.org/x/tools v0.32.0
 	google.golang.org/grpc v1.65.0
 	k8s.io/api v0.32.5
 	k8s.io/apiextensions-apiserver v0.32.5
@@ -109,6 +111,7 @@ require (
 	github.com/go-toolsmith/astcopy v1.1.0 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/golang/glog v1.2.4 // indirect
+	github.com/golangci/plugin-module-register v0.1.1 // indirect
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/gnostic-models v0.6.8 // indirect
 	github.com/google/go-querystring v1.0.0 // indirect
@@ -145,11 +148,11 @@ require (
 	go.mongodb.org/mongo-driver v1.14.0 // indirect
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 // indirect
 	golang.org/x/exp/typeparams v0.0.0-20230203172020-98cc5a0785f9 // indirect
-	golang.org/x/mod v0.22.0 // indirect
+	golang.org/x/mod v0.24.0 // indirect
 	golang.org/x/oauth2 v0.27.0 // indirect
-	golang.org/x/text v0.23.0 // indirect
+	golang.org/x/text v0.24.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240826202546-f6391c0de4c7 // indirect
-	google.golang.org/protobuf v1.36.1 // indirect
+	google.golang.org/protobuf v1.36.6 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
@@ -159,6 +162,7 @@ require (
 	k8s.io/klog/v2 v2.130.1 // indirect
 	kubevirt.io/controller-lifecycle-operator-sdk/api v0.0.0-20220329064328-f3cc58c6ed90 // indirect
 	mvdan.cc/editorconfig v0.2.1-0.20231228180347-1925077f8eb2 // indirect
+	sigs.k8s.io/kube-api-linter v0.0.0-20250808120943-48643eb2563d // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.3 // indirect
 )
 
