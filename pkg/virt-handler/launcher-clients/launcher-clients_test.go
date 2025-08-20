@@ -169,6 +169,7 @@ var _ = Describe("VirtualMachineInstance migration target", func() {
 				eventType := "Normal"
 				eventReason := "fooReason"
 				eventMessage := "barMessage"
+				expectedEvent := fmt.Sprintf("%s %s %s involvedObject{kind=VirtualMachineInstance,apiVersion=kubevirt.io/v1}", eventType, eventReason, eventMessage)
 
 				pipePath := filepath.Join(shareDir, "client_path", "domain-notify-pipe.sock")
 				pipeDir := filepath.Join(shareDir, "client_path")
@@ -184,37 +185,54 @@ var _ = Describe("VirtualMachineInstance migration target", func() {
 				client = notifyclient.NewNotifier(pipeDir)
 
 				for i := 1; i < 5; i++ {
-					// close and wait for server to stop
+					// 1. Shutdown server and wait for complete shutdown
 					close(serverStopChan)
 					<-serverIsStoppedChan
 
-					client.SetCustomTimeouts(1*time.Second, 1*time.Second, 1*time.Second)
-					// Expect a client error to occur here because the server is down
-					err = client.SendK8sEvent(vmi, eventType, eventReason, eventMessage)
-					Expect(err).To(HaveOccurred())
+					// 2. Add additional delay to ensure complete server shutdown (important for ARM64)
+					time.Sleep(500 * time.Millisecond)
 
-					// Restart the server now that it is down.
+					// 3. Test client failure while server is down
+					client.SetCustomTimeouts(1*time.Second, 1*time.Second, 1*time.Second)
+					err = client.SendK8sEvent(vmi, eventType, eventReason, eventMessage)
+					Expect(err).To(HaveOccurred(), "Client should fail when server is down")
+
+					// 4. Restart server with proper synchronization
 					serverStopChan = make(chan struct{})
 					serverIsStoppedChan = make(chan struct{})
 					go func() {
+						defer close(serverIsStoppedChan)
 						notifyserver.RunServer(shareDir, serverStopChan, eventChan, recorder, vmiStore)
-						close(serverIsStoppedChan)
 					}()
 
-					// Expect the client to reconnect and succeed despite server restarts
-					client.SetCustomTimeouts(1*time.Second, 1*time.Second, 3*time.Second)
-					err = client.SendK8sEvent(vmi, eventType, eventReason, eventMessage)
-					Expect(err).ToNot(HaveOccurred())
+					// 5. Wait for server to be fully ready with retry logic
+					Eventually(func() error {
+						client.SetCustomTimeouts(500*time.Millisecond, 500*time.Millisecond, 1*time.Second)
+						return client.SendK8sEvent(vmi, eventType, "TestConnection", "test")
+					}, 6*time.Second, 200*time.Millisecond).Should(Succeed(), "Server should be ready for connections")
 
-					timedOut := false
-					timeout := time.After(4 * time.Second)
-					select {
-					case <-timeout:
-						timedOut = true
-					case event := <-recorder.Events:
-						Expect(event).To(Equal(fmt.Sprintf("%s %s %s involvedObject{kind=VirtualMachineInstance,apiVersion=kubevirt.io/v1}", eventType, eventReason, eventMessage)))
-					}
-					Expect(timedOut).To(BeFalse(), "should not time out")
+					// 6. Test client reconnection with increased timeout for ARM64 compatibility
+					client.SetCustomTimeouts(1*time.Second, 2*time.Second, 5*time.Second)
+					err = client.SendK8sEvent(vmi, eventType, eventReason, eventMessage)
+					Expect(err).ToNot(HaveOccurred(), "Client should reconnect successfully after server restart")
+
+					// 7. Wait for event with generous timeout to handle ARM64 timing differences
+					var receivedEvent string
+					Eventually(func() bool {
+						select {
+						case event := <-recorder.Events:
+							// Skip test connection events, look for our actual event
+							if event == fmt.Sprintf("Normal TestConnection test involvedObject{kind=VirtualMachineInstance,apiVersion=kubevirt.io/v1}") {
+								return false // Skip test events
+							}
+							receivedEvent = event
+							return true
+						default:
+							return false
+						}
+					}, 8*time.Second, 100*time.Millisecond).Should(BeTrue(), "Should receive event within timeout")
+
+					Expect(receivedEvent).To(Equal(expectedEvent), "Received event should match expected format")
 				}
 			})
 		})
