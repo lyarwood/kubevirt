@@ -103,6 +103,9 @@ type VirtOperatorApp struct {
 	ctx context.Context
 
 	reInitChan chan string
+
+	clientQPS   float32
+	clientBurst int
 }
 
 func Execute() {
@@ -140,10 +143,12 @@ func Execute() {
 	if err != nil {
 		panic(err)
 	}
+	config.QPS = app.clientQPS
+	config.Burst = app.clientBurst
 
 	app.aggregatorClient = aggregatorclient.NewForConfigOrDie(config)
 
-	app.clientSet, err = kubecli.GetKubevirtClient()
+	app.clientSet, err = kubecli.GetKubevirtClientFromRESTConfig(config)
 
 	if err != nil {
 		golog.Fatal(err)
@@ -468,6 +473,9 @@ func (app *VirtOperatorApp) AddFlags() {
 
 	app.BindAddress = defaultHost
 	app.Port = defaultPort
+
+	pflag.Float32Var(&app.clientQPS, "client-qps", 5, "QPS to use when talking to the cluster.")
+	pflag.IntVar(&app.clientBurst, "client-burst", 10, "Burst to use when talking to the cluster.")
 
 	app.AddCommonFlags()
 }
