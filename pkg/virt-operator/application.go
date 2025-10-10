@@ -142,7 +142,7 @@ func Execute() {
 	}
 
 	app.aggregatorClient = aggregatorclient.NewForConfigOrDie(config)
-
+	clientmetrics.RegisterRestConfigHooks()
 	app.clientSet, err = kubecli.GetKubevirtClient()
 
 	if err != nil {
