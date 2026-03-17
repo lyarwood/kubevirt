@@ -45,7 +45,7 @@ var _ = Describe("GetVMStats", func() {
 	BeforeEach(func() {
 		ctrl = gomock.NewController(GinkgoT())
 		domainManager = virtwrap.NewMockDomainManager(ctrl)
-		server = cmdserver.NewLauncher(domainManager, cmdserver.NewServerOptions(false).WithVMStatsCollector(true))
+		server = cmdserver.NewLauncher(domainManager, cmdserver.NewServerOptions(false, false).WithVMStatsCollector(true))
 	})
 
 	It("should return success with empty data when nothing is requested", func() {

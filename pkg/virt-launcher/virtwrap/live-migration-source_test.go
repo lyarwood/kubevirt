@@ -85,7 +85,7 @@ var _ = Describe("Live migration source", func() {
 				nil,
 				v1.KvmHypervisorName,
 				nil,
-				"", false,
+				"", false, false, // allow cross-arch emulation
 			)
 			libvirtDomainManager = manager.(*LibvirtDomainManager)
 			libvirtDomainManager.initializeMigrationMetadata(vmi, v1.MigrationPreCopy)
@@ -173,7 +173,7 @@ var _ = Describe("Live migration source", func() {
 				nil,
 				v1.KvmHypervisorName,
 				nil,
-				"", false,
+				"", false, false, // allow cross-arch emulation
 			)
 			libvirtDomainManager = manager.(*LibvirtDomainManager)
 			libvirtDomainManager.initializeMigrationMetadata(vmi, v1.MigrationPreCopy)

@@ -224,6 +224,7 @@ type LibvirtDomainManager struct {
 	cloudInitDataStore     *cloudinit.CloudInitData
 	setGuestTimeContextPtr *contextStore
 	efiEnvironment         *efi.EFIEnvironment
+	ovmfPath               string
 	ephemeralDiskCreator   ephemeraldisk.EphemeralDiskCreatorInterface
 	directIOChecker        converter.DirectIOChecker
 	disksInfo              map[string]*osdisk.DiskInfo
@@ -249,6 +250,7 @@ type LibvirtDomainManager struct {
 
 	hypervisorDeviceAvailable bool
 	hypervisorName            string
+	allowCrossArchEmulation   bool
 
 	abortWg sync.WaitGroup
 }
@@ -278,14 +280,14 @@ func (s pausedVMIs) contains(uid types.UID) bool {
 
 func NewLibvirtDomainManager(connection cli.Connection, virtShareDir, ephemeralDiskDir string, agentStore *agentpoller.AsyncAgentStore,
 	ovmfPath string, ephemeralDiskCreator ephemeraldisk.EphemeralDiskCreatorInterface, metadataCache *metadata.Cache,
-	stopChan chan struct{}, diskMemoryLimitBytes int64, cpuSetGetter func() ([]int, error), imageVolumeEnabled bool, libvirtHooksServerAndClientEnabled bool, hookServer *premigrationhookserver.PreMigrationHookServer, hypervisorName string, registerNBD storage.RegisterNBDFunc, domainName string, vmStatsCollectorEnabled bool) (DomainManager, error) {
+	stopChan chan struct{}, diskMemoryLimitBytes int64, cpuSetGetter func() ([]int, error), imageVolumeEnabled bool, libvirtHooksServerAndClientEnabled bool, hookServer *premigrationhookserver.PreMigrationHookServer, hypervisorName string, registerNBD storage.RegisterNBDFunc, domainName string, vmStatsCollectorEnabled bool, allowCrossArchEmulation bool) (DomainManager, error) {
 	directIOChecker := converter.NewDirectIOChecker()
-	return newLibvirtDomainManager(connection, virtShareDir, ephemeralDiskDir, agentStore, ovmfPath, ephemeralDiskCreator, directIOChecker, metadataCache, stopChan, diskMemoryLimitBytes, cpuSetGetter, imageVolumeEnabled, libvirtHooksServerAndClientEnabled, hookServer, hypervisorName, registerNBD, domainName, vmStatsCollectorEnabled)
+	return newLibvirtDomainManager(connection, virtShareDir, ephemeralDiskDir, agentStore, ovmfPath, ephemeralDiskCreator, directIOChecker, metadataCache, stopChan, diskMemoryLimitBytes, cpuSetGetter, imageVolumeEnabled, libvirtHooksServerAndClientEnabled, hookServer, hypervisorName, registerNBD, domainName, vmStatsCollectorEnabled, allowCrossArchEmulation)
 }
 
 func newLibvirtDomainManager(connection cli.Connection, virtShareDir, ephemeralDiskDir string, agentStore *agentpoller.AsyncAgentStore, ovmfPath string,
 	ephemeralDiskCreator ephemeraldisk.EphemeralDiskCreatorInterface, directIOChecker converter.DirectIOChecker, metadataCache *metadata.Cache,
-	stopChan chan struct{}, diskMemoryLimitBytes int64, cpuSetGetter func() ([]int, error), imageVolumeEnabled bool, libvirtHooksServerAndClientEnabled bool, hookServer *premigrationhookserver.PreMigrationHookServer, hypervisorName string, registerNBD storage.RegisterNBDFunc, domainName string, vmStatsCollectorEnabled bool) (DomainManager, error) {
+	stopChan chan struct{}, diskMemoryLimitBytes int64, cpuSetGetter func() ([]int, error), imageVolumeEnabled bool, libvirtHooksServerAndClientEnabled bool, hookServer *premigrationhookserver.PreMigrationHookServer, hypervisorName string, registerNBD storage.RegisterNBDFunc, domainName string, vmStatsCollectorEnabled bool, allowCrossArchEmulation bool) (DomainManager, error) {
 
 	// Check hypervisor device availability
 	hypervisorDevicePath := "/dev/" + hypervisor.NewLauncherHypervisorResources(hypervisorName).GetHypervisorDevice()
@@ -309,6 +311,7 @@ func newLibvirtDomainManager(connection cli.Connection, virtShareDir, ephemeralD
 
 		agentData:            agentStore,
 		efiEnvironment:       efi.DetectEFIEnvironment(runtime.GOARCH, ovmfPath),
+		ovmfPath:             ovmfPath,
 		ephemeralDiskCreator: ephemeralDiskCreator,
 		directIOChecker:      directIOChecker,
 		disksInfo:            map[string]*osdisk.DiskInfo{},
@@ -322,6 +325,7 @@ func newLibvirtDomainManager(connection cli.Connection, virtShareDir, ephemeralD
 		hookServer:                         hookServer,
 		hypervisorName:                     hypervisorName,
 		hypervisorDeviceAvailable:          hypervisorDeviceAvailable,
+		allowCrossArchEmulation:            allowCrossArchEmulation,
 	}
 
 	manager.hotplugHostDevicesInProgress = make(chan struct{}, maxConcurrentHotplugHostDevices)
@@ -1184,6 +1188,8 @@ func (l *LibvirtDomainManager) generateConverterContext(vmi *v1.VirtualMachineIn
 		}
 	}
 
+	efiEnv := selectEFIEnvironment(l.efiEnvironment, l.ovmfPath, l.allowCrossArchEmulation, vmi.Spec.Architecture)
+
 	var efiConf *convertertypes.EFIConfiguration
 	if vmi.IsBootloaderEFI() {
 		secureBoot := vmi.Spec.Domain.Firmware.Bootloader.EFI.SecureBoot == nil || *vmi.Spec.Domain.Firmware.Bootloader.EFI.SecureBoot
@@ -1199,7 +1205,7 @@ func (l *LibvirtDomainManager) generateConverterContext(vmi *v1.VirtualMachineIn
 		} else if tdx {
 			vmType = efi.TDX
 		}
-		if !l.efiEnvironment.Bootable(secureBoot, vmType) {
+		if !efiEnv.Bootable(secureBoot, vmType) {
 			log.Log.Errorf("EFI OVMF roms missing for booting in EFI mode with SecureBoot=%v, SEV/SEV-ES=%v, SEV-SNP=%v, TDX=%v", secureBoot, sev, snp, tdx)
 			return nil, fmt.Errorf("EFI OVMF roms missing for booting in EFI mode with SecureBoot=%v, SEV/SEV-ES=%v, SEV-SNP=%v, TDX=%v", secureBoot, sev, snp, tdx)
 		}
@@ -1209,8 +1215,8 @@ func (l *LibvirtDomainManager) generateConverterContext(vmi *v1.VirtualMachineIn
 		secureLoader := secureBoot && !tdx
 
 		efiConf = &convertertypes.EFIConfiguration{
-			EFICode:      l.efiEnvironment.EFICode(secureBoot, vmType),
-			EFIVars:      l.efiEnvironment.EFIVars(secureBoot, vmType),
+			EFICode:      efiEnv.EFICode(secureBoot, vmType),
+			EFIVars:      efiEnv.EFIVars(secureBoot, vmType),
 			SecureLoader: secureLoader,
 		}
 	}
@@ -1218,9 +1224,11 @@ func (l *LibvirtDomainManager) generateConverterContext(vmi *v1.VirtualMachineIn
 	// Map the VirtualMachineInstance to the Domain
 
 	c := &convertertypes.ConverterContext{
-		Architecture:              arch.NewConverter(runtime.GOARCH),
+		Architecture:              selectArchConverter(l.allowCrossArchEmulation, vmi.Spec.Architecture),
 		VirtualMachine:            vmi,
 		AllowEmulation:            allowEmulation,
+		AllowCrossArchEmulation:   l.allowCrossArchEmulation && vmi.Spec.Architecture != "" && vmi.Spec.Architecture != runtime.GOARCH,
+		HostArchitecture:          runtime.GOARCH,
 		HypervisorDeviceAvailable: l.hypervisorDeviceAvailable,
 		CPUSet:                    podCPUSet,
 		IsBlockPVC:                isBlockPVCMap,
@@ -2924,4 +2932,19 @@ func AgentDataCommandTTLKeys() []string {
 		keys = append(keys, k)
 	}
 	return keys
+}
+
+func selectEFIEnvironment(hostEFI *efi.EFIEnvironment, ovmfPath string, allowCrossArchEmulation bool, guestArch string) *efi.EFIEnvironment {
+	if allowCrossArchEmulation && guestArch != "" && guestArch != runtime.GOARCH {
+		return efi.DetectEFIEnvironment(guestArch, ovmfPath)
+	}
+	return hostEFI
+}
+
+func selectArchConverter(allowCrossArchEmulation bool, guestArch string) arch.Converter {
+	vmArch := runtime.GOARCH
+	if allowCrossArchEmulation && guestArch != "" && guestArch != runtime.GOARCH {
+		vmArch = guestArch
+	}
+	return arch.NewConverter(vmArch)
 }
