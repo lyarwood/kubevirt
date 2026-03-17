@@ -242,12 +242,23 @@ const (
 	// Plugins enables the Plugin CRD for declarative VM extension
 	// via domain hooks, node hooks, and admission references (VEP-190).
 	PluginsGate = "Plugins"
+
 	// Owner: sig-compute / @fanzhangio
 	// Alpha: v1.9.0
 	// GraceIOVirtualization enables GPU passthrough optimized for NVIDIA Grace
 	// platforms (i.e ARM64 architectures by utilizing SMMUv3 IOMMU).
 	// It utilizes SMMUv3 IOMMU, IOMMUFD device binding on ARM64, and ACPI Generic Initiator NUMA topology.
 	GraceIOVirtualization = "GraceIOVirtualization"
+
+	// Owner: sig-compute / @lyarwood
+	// Alpha: v1.9.0
+	//
+	// CrossArchitectureVirtualization enables cross-architecture VM execution.
+	// When enabled, VMs can run on nodes with a different CPU architecture than
+	// the guest (e.g., ARM64 guests on AMD64 hosts) via software emulation or
+	// hardware-accelerated virtualization. Independent of useEmulation.
+	// See VEP #172.
+	CrossArchitectureVirtualization = "CrossArchitectureVirtualization"
 )
 
 func init() {
@@ -295,4 +306,5 @@ func init() {
 	RegisterFeatureGate(FeatureGate{Name: OCIExport, State: Alpha})
 	RegisterFeatureGate(FeatureGate{Name: PluginsGate, State: Alpha})
 	RegisterFeatureGate(FeatureGate{Name: GraceIOVirtualization, State: Alpha})
+	RegisterFeatureGate(FeatureGate{Name: CrossArchitectureVirtualization, State: Alpha})
 }
