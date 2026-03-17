@@ -69,4 +69,6 @@ type ConverterContext struct {
 	GraceIOVirtualizationEnabled    bool
 	DomainAttachmentByInterfaceName map[string]string
 	HypervisorName                  string
+	AllowCrossArchEmulation         bool
+	HostArchitecture                string
 }
