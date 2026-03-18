@@ -24,6 +24,7 @@ package nodelabeller
 import (
 	"context"
 	"fmt"
+	goruntime "runtime"
 	"strings"
 	"time"
 
@@ -225,11 +226,20 @@ var _ = Describe("Node-labeller ", func() {
 		Expect(res).To(BeTrue())
 
 		node := retrieveNode(kubeClient)
-		Expect(node.Labels).To(HaveKeyWithValue(v1.VMArchLabel+"amd64", "true"))
-		Expect(node.Labels).ToNot(HaveKey(v1.VMArchLabel + "arm64"))
+		Expect(node.Labels).To(HaveKeyWithValue(v1.VMArchLabel+goruntime.GOARCH, "true"))
 	})
 
 	It("should add cross-arch vm-arch label when feature gate is enabled", func() {
+		crossArch := ""
+		switch goruntime.GOARCH {
+		case "amd64":
+			crossArch = "arm64"
+		case "arm64":
+			crossArch = "amd64"
+		default:
+			Skip("cross-arch emulation is only supported on amd64 and arm64")
+		}
+
 		initNodeLabeller(&v1.KubeVirt{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "kubevirt",
@@ -255,8 +265,8 @@ var _ = Describe("Node-labeller ", func() {
 		Expect(res).To(BeTrue())
 
 		node := retrieveNode(kubeClient)
-		Expect(node.Labels).To(HaveKeyWithValue(v1.VMArchLabel+"amd64", "true"))
-		Expect(node.Labels).To(HaveKeyWithValue(v1.VMArchLabel+"arm64", "true"))
+		Expect(node.Labels).To(HaveKeyWithValue(v1.VMArchLabel+goruntime.GOARCH, "true"))
+		Expect(node.Labels).To(HaveKeyWithValue(v1.VMArchLabel+crossArch, "true"))
 	})
 
 	It("should add usable cpu model labels for the host cpu model", func() {
