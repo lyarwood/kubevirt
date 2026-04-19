@@ -148,6 +148,44 @@ var _ = Describe("Validating Preference Admitter", func() {
 		),
 	)
 
+	DescribeTable("should reject when spreading vCPUs with a ratio of 0",
+		func(preferenceObj instancetypev1beta1.VirtualMachinePreference) {
+			ar := createPreferenceAdmissionReview(&preferenceObj, instancetypev1beta1.SchemeGroupVersion.Version)
+			response := admitter.Admit(context.Background(), ar)
+			Expect(response.Allowed).To(BeFalse(), "Expected preference to not be allowed")
+			Expect(response.Result.Details.Causes).To(HaveLen(1))
+			Expect(response.Result.Details.Causes[0].Type).To(Equal(metav1.CauseTypeFieldValueInvalid))
+			Expect(response.Result.Details.Causes[0].Message).To(Equal("ratio must be greater than 0"))
+			Expect(response.Result.Details.Causes[0].Field).To(Equal(k8sfield.NewPath("spec", "cpu", "spreadOptions", "ratio").String()))
+		},
+		Entry("SpreadAcrossSocketsCores with spread",
+			instancetypev1beta1.VirtualMachinePreference{
+				Spec: instancetypev1beta1.VirtualMachinePreferenceSpec{
+					CPU: &instancetypev1beta1.CPUPreferences{
+						PreferredCPUTopology: pointer.P(instancetypev1beta1.Spread),
+						SpreadOptions: &instancetypev1beta1.SpreadOptions{
+							Across: pointer.P(instancetypev1beta1.SpreadAcrossSocketsCores),
+							Ratio:  pointer.P(uint32(0)),
+						},
+					},
+				},
+			},
+		),
+		Entry("SpreadAcrossSocketsCoresThreads with spread",
+			instancetypev1beta1.VirtualMachinePreference{
+				Spec: instancetypev1beta1.VirtualMachinePreferenceSpec{
+					CPU: &instancetypev1beta1.CPUPreferences{
+						PreferredCPUTopology: pointer.P(instancetypev1beta1.Spread),
+						SpreadOptions: &instancetypev1beta1.SpreadOptions{
+							Across: pointer.P(instancetypev1beta1.SpreadAcrossSocketsCoresThreads),
+							Ratio:  pointer.P(uint32(0)),
+						},
+					},
+				},
+			},
+		),
+	)
+
 	DescribeTable("should raise warning for", func(deprecatedTopology, expectedAlternativeTopology instancetypev1beta1.PreferredCPUTopology) {
 		preferenceObj := &instancetypev1beta1.VirtualMachinePreference{
 			Spec: instancetypev1beta1.VirtualMachinePreferenceSpec{
@@ -289,6 +327,44 @@ var _ = Describe("Validating ClusterPreference Admitter", func() {
 						SpreadOptions: &instancetypev1beta1.SpreadOptions{
 							Across: pointer.P(instancetypev1beta1.SpreadAcrossCoresThreads),
 							Ratio:  pointer.P(uint32(3)),
+						},
+					},
+				},
+			},
+		),
+	)
+
+	DescribeTable("should reject when spreading vCPUs with a ratio of 0",
+		func(clusterPreferenceObj instancetypev1beta1.VirtualMachineClusterPreference) {
+			ar := createClusterPreferenceAdmissionReview(&clusterPreferenceObj, instancetypev1beta1.SchemeGroupVersion.Version)
+			response := admitter.Admit(context.Background(), ar)
+			Expect(response.Allowed).To(BeFalse(), "Expected preference to not be allowed")
+			Expect(response.Result.Details.Causes).To(HaveLen(1))
+			Expect(response.Result.Details.Causes[0].Type).To(Equal(metav1.CauseTypeFieldValueInvalid))
+			Expect(response.Result.Details.Causes[0].Message).To(Equal("ratio must be greater than 0"))
+			Expect(response.Result.Details.Causes[0].Field).To(Equal(k8sfield.NewPath("spec", "cpu", "spreadOptions", "ratio").String()))
+		},
+		Entry("SpreadAcrossSocketsCores with spread",
+			instancetypev1beta1.VirtualMachineClusterPreference{
+				Spec: instancetypev1beta1.VirtualMachinePreferenceSpec{
+					CPU: &instancetypev1beta1.CPUPreferences{
+						PreferredCPUTopology: pointer.P(instancetypev1beta1.Spread),
+						SpreadOptions: &instancetypev1beta1.SpreadOptions{
+							Across: pointer.P(instancetypev1beta1.SpreadAcrossSocketsCores),
+							Ratio:  pointer.P(uint32(0)),
+						},
+					},
+				},
+			},
+		),
+		Entry("SpreadAcrossSocketsCoresThreads with spread",
+			instancetypev1beta1.VirtualMachineClusterPreference{
+				Spec: instancetypev1beta1.VirtualMachinePreferenceSpec{
+					CPU: &instancetypev1beta1.CPUPreferences{
+						PreferredCPUTopology: pointer.P(instancetypev1beta1.Spread),
+						SpreadOptions: &instancetypev1beta1.SpreadOptions{
+							Across: pointer.P(instancetypev1beta1.SpreadAcrossSocketsCoresThreads),
+							Ratio:  pointer.P(uint32(0)),
 						},
 					},
 				},

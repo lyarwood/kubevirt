@@ -58,6 +58,7 @@ func validatePreferredCPUTopology(field *k8sfield.Path, spec *instancetypeapiv1b
 const (
 	spreadAcrossCoresThreadsRatioErr = "only a ratio of 2 (1 core 2 threads) is allowed when spreading vCPUs over cores and threads"
 	spreadAcrossUnsupportedErrFmt    = "across %s is not supported"
+	spreadRatioZeroErr               = "ratio must be greater than 0"
 )
 
 func hasSpreadTopology(spec *instancetypeapiv1beta1.VirtualMachinePreferenceSpec) bool {
@@ -84,6 +85,14 @@ func validateSpreadOptions(field *k8sfield.Path, spec *instancetypeapiv1beta1.Vi
 			Type:    metav1.CauseTypeFieldValueInvalid,
 			Message: fmt.Sprintf(spreadAcrossUnsupportedErrFmt, across),
 			Field:   field.Child("cpu", "spreadOptions", "across").String(),
+		}}
+	}
+
+	if ratio == 0 {
+		return []metav1.StatusCause{{
+			Type:    metav1.CauseTypeFieldValueInvalid,
+			Message: spreadRatioZeroErr,
+			Field:   field.Child("cpu", "spreadOptions", "ratio").String(),
 		}}
 	}
 
