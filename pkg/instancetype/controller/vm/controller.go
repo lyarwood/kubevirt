@@ -194,20 +194,14 @@ func (c *controller) handleExpand(
 		if revision.HasControllerRevisionRef(vm.Status.InstancetypeRef) {
 			if err = c.clientset.AppsV1().ControllerRevisions(vm.Namespace).Delete(
 				context.Background(), vm.Status.InstancetypeRef.ControllerRevisionRef.Name, metav1.DeleteOptions{}); err != nil {
-				return nil, common.NewSyncError(
-					fmt.Errorf(cleanControllerRevisionErrFmt, vm.Status.InstancetypeRef.ControllerRevisionRef.Name, vm.Name, err),
-					common.FailedCreateVirtualMachineReason,
-				)
+				log.Log.Object(vm).Reason(err).Errorf(cleanControllerRevisionErrFmt, vm.Status.InstancetypeRef.ControllerRevisionRef.Name, vm.Name, err)
 			}
 		}
 
 		if revision.HasControllerRevisionRef(vm.Status.PreferenceRef) {
 			if err = c.clientset.AppsV1().ControllerRevisions(vm.Namespace).Delete(
 				context.Background(), vm.Status.PreferenceRef.ControllerRevisionRef.Name, metav1.DeleteOptions{}); err != nil {
-				return nil, common.NewSyncError(
-					fmt.Errorf(cleanControllerRevisionErrFmt, vm.Status.PreferenceRef.ControllerRevisionRef.Name, vm.Name, err),
-					common.FailedCreateVirtualMachineReason,
-				)
+				log.Log.Object(vm).Reason(err).Errorf(cleanControllerRevisionErrFmt, vm.Status.PreferenceRef.ControllerRevisionRef.Name, vm.Name, err)
 			}
 		}
 		return updatedVM, nil

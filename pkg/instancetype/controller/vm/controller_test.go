@@ -36,6 +36,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 
@@ -92,6 +93,8 @@ var _ = Describe("Instance type and Preference VirtualMachine Controller", func(
 		preferenceInformerStore          cache.Store
 		clusterPreferenceInformerStore   cache.Store
 		controllerrevisionInformerStore  cache.Store
+
+		fakeK8sClientset *k8sfake.Clientset
 	)
 
 	BeforeEach(func() {
@@ -122,7 +125,8 @@ var _ = Describe("Instance type and Preference VirtualMachine Controller", func(
 		virtClient.EXPECT().VirtualMachineClusterPreference().Return(
 			fake.NewSimpleClientset().InstancetypeV1beta1().VirtualMachineClusterPreferences()).AnyTimes()
 
-		virtClient.EXPECT().AppsV1().Return(k8sfake.NewSimpleClientset().AppsV1()).AnyTimes()
+		fakeK8sClientset = k8sfake.NewSimpleClientset()
+		virtClient.EXPECT().AppsV1().Return(fakeK8sClientset.AppsV1()).AnyTimes()
 
 		instancetypeInformer, _ := testutils.NewFakeInformerFor(&v1beta1.VirtualMachineInstancetype{})
 		instancetypeInformerStore = instancetypeInformer.GetStore()
@@ -863,5 +867,59 @@ var _ = Describe("Instance type and Preference VirtualMachine Controller", func(
 			Entry("referencePolicy expandAll and revisionNames already captured",
 				kvWithReferencePolicyExpandAll, addRevisionsToVMFunc),
 		)
+
+		It("should expand VM and log ControllerRevision cleanup failure without returning error", func() {
+			testutils.UpdateFakeKubeVirtClusterConfig(kvStore, kvWithReferencePolicyExpandAll)
+			addRevisionsToVMFunc()
+
+			// Stash ControllerRevision names before expansion clears them from vm.Status
+			instancetypeRevisionName := vm.Status.InstancetypeRef.ControllerRevisionRef.Name
+			preferenceRevisionName := vm.Status.PreferenceRef.ControllerRevisionRef.Name
+
+			var err error
+			vm, err = virtClient.VirtualMachine(vm.Namespace).Create(
+				context.TODO(), vm, metav1.CreateOptions{})
+			Expect(err).ToNot(HaveOccurred())
+
+			// Stash the pre-expansion VM so we can re-sync after restoring Delete
+			vmBeforeExpansion := vm.DeepCopy()
+
+			// Inject a static Delete failure so that ControllerRevision cleanup fails
+			fakeK8sClientset.PrependReactor("delete", "controllerrevisions",
+				func(action k8stesting.Action) (bool, runtime.Object, error) {
+					return true, nil, errors.New("injected delete failure")
+				})
+
+			// Sync should succeed even though ControllerRevision cleanup fails — cleanup is best-effort
+			sanitySync(vm, vmi)
+
+			// The VM should have been expanded
+			vm, err = virtClient.VirtualMachine(vm.Namespace).Get(
+				context.TODO(), vm.Name, metav1.GetOptions{})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(vm.Spec.Instancetype).To(BeNil())
+			Expect(vm.Spec.Template.Spec.Domain.CPU.Sockets).To(Equal(instancetypeObj.Spec.CPU.Guest))
+
+			// ControllerRevisions should still exist since best-effort cleanup failed
+			_, err = virtClient.AppsV1().ControllerRevisions(vm.Namespace).Get(
+				context.TODO(), instancetypeRevisionName, metav1.GetOptions{})
+			Expect(err).ToNot(HaveOccurred())
+			_, err = virtClient.AppsV1().ControllerRevisions(vm.Namespace).Get(
+				context.TODO(), preferenceRevisionName, metav1.GetOptions{})
+			Expect(err).ToNot(HaveOccurred())
+
+			// Remove the failing reactor so the default object tracker handles Delete,
+			// then re-sync with the pre-expansion VM to clean up the leaked ControllerRevisions
+			fakeK8sClientset.ReactionChain = fakeK8sClientset.ReactionChain[1:]
+			sanitySync(vmBeforeExpansion, vmi)
+
+			// ControllerRevisions should now be cleaned up
+			_, err = virtClient.AppsV1().ControllerRevisions(vm.Namespace).Get(
+				context.TODO(), instancetypeRevisionName, metav1.GetOptions{})
+			Expect(err).To(MatchError(k8serrors.IsNotFound, "IsNotFound"))
+			_, err = virtClient.AppsV1().ControllerRevisions(vm.Namespace).Get(
+				context.TODO(), preferenceRevisionName, metav1.GetOptions{})
+			Expect(err).To(MatchError(k8serrors.IsNotFound, "IsNotFound"))
+		})
 	})
 })
