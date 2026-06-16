@@ -173,13 +173,6 @@ launcherbase_aarch64="
   qemu-kvm-device-display-virtio-gpu-${QEMU_VERSION}
   qemu-kvm-device-display-virtio-gpu-pci-${QEMU_VERSION}
 "
-if [ "${KUBEVIRT_CROSS_ARCH_EMULATION}" ]; then
-    launcherbase_aarch64+="
-  qemu-system-x86-core
-  edk2-ovmf
-  seabios
-"
-fi
 launcherbase_s390x="
   qemu-kvm-device-display-virtio-gpu-${QEMU_VERSION}
   qemu-kvm-device-display-virtio-gpu-ccw-${QEMU_VERSION}
@@ -478,6 +471,21 @@ if [ -z "${SINGLE_ARCH}" ] || [ "${SINGLE_ARCH}" == "aarch64" ]; then
         $launcherbase_main \
         $launcherbase_aarch64 \
         $launcherbase_extra
+
+    if [ "${KUBEVIRT_CROSS_ARCH_EMULATION}" ]; then
+        bazel run \
+            --config=${ARCHITECTURE} \
+            //:bazeldnf -- rpmtree \
+            --public --nobest \
+            --name launcherbase_crossarch_aarch64${TARGET_SUFFIX} \
+            --basesystem ${BASESYSTEM} \
+            --force-ignore-with-dependencies '^mozjs60' \
+            --force-ignore-with-dependencies 'python' \
+            ${bazeldnf_repos} \
+            qemu-system-x86-core \
+            edk2-ovmf \
+            seabios
+    fi
 
     # create a rpmtree for virt-handler
     bazel run \
