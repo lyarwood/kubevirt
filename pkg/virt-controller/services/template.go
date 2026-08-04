@@ -45,8 +45,11 @@ import (
 	"kubevirt.io/client-go/log"
 	"kubevirt.io/client-go/precond"
 
+	pluginv1alpha1 "kubevirt.io/api/plugin/v1alpha1"
+
 	drautil "kubevirt.io/kubevirt/pkg/dra"
 	"kubevirt.io/kubevirt/pkg/hypervisor"
+	plugincel "kubevirt.io/kubevirt/pkg/plugins/cel"
 	"kubevirt.io/kubevirt/pkg/pointer"
 
 	"kubevirt.io/kubevirt/pkg/apimachinery"
@@ -150,6 +153,8 @@ type TemplateService struct {
 	resourceQuotaStore         cache.Store
 	namespaceStore             cache.Store
 
+	pluginStore                   cache.Store
+	celEvaluator                  *plugincel.Evaluator
 	sidecarCreators               []SidecarCreatorFunc
 	netMemoryCalculator           netMemoryCalculator
 	annotationsGenerators         []annotationsGenerator
@@ -308,6 +313,44 @@ func (t *TemplateService) GetLauncherImage() string {
 	return t.launcherImage
 }
 
+// LauncherImageForVMI returns the launcher image for a given VMI, checking
+// plugins with LauncherImage set before falling back to the default. Plugins
+// are evaluated in alphabetical order by name; the first match wins.
+func (t *TemplateService) LauncherImageForVMI(vmi *v1.VirtualMachineInstance) string {
+	if t.pluginStore == nil || t.celEvaluator == nil || !t.clusterConfig.PluginsEnabled() {
+		return t.launcherImage
+	}
+
+	objs := t.pluginStore.List()
+	if len(objs) == 0 {
+		return t.launcherImage
+	}
+
+	var plugins []pluginv1alpha1.Plugin
+	for _, obj := range objs {
+		if p, ok := obj.(*pluginv1alpha1.Plugin); ok && p.Spec.LauncherImage != "" {
+			plugins = append(plugins, *p)
+		}
+	}
+	sort.Slice(plugins, func(i, j int) bool {
+		return plugins[i].Name < plugins[j].Name
+	})
+
+	for _, p := range plugins {
+		match, err := t.celEvaluator.EvaluateCondition(p.Spec.Condition, map[string]any{"vmi": vmi})
+		if err != nil {
+			log.Log.Object(vmi).Warningf("Plugin %q condition evaluation failed, skipping: %v", p.Name, err)
+			continue
+		}
+		if match {
+			log.Log.Object(vmi).Infof("Plugin %q matched, using launcher image %q", p.Name, p.Spec.LauncherImage)
+			return p.Spec.LauncherImage
+		}
+	}
+
+	return t.launcherImage
+}
+
 func (t *TemplateService) RenderLaunchManifestNoVm(vmi *v1.VirtualMachineInstance) (*k8sv1.Pod, error) {
 	backendStoragePVCName := ""
 	if backendstorage.IsBackendStorageNeeded(vmi) {
@@ -396,6 +439,8 @@ func (t *TemplateService) renderLaunchManifest(vmi *v1.VirtualMachineInstance, i
 	precond.MustNotBeNil(vmi)
 	domain := precond.MustNotBeEmpty(vmi.GetObjectMeta().GetName())
 	namespace := precond.MustNotBeEmpty(vmi.GetObjectMeta().GetNamespace())
+
+	launcherImage := t.LauncherImageForVMI(vmi)
 
 	var userId int64 = util.RootUser
 
@@ -515,12 +560,12 @@ func (t *TemplateService) renderLaunchManifest(vmi *v1.VirtualMachineInstance, i
 		command = append(command, "--simulate-crash")
 	}
 
-	volumeRenderer, err := t.newVolumeRenderer(vmi, imageIDs, namespace, requestedHookSidecarList, backendStoragePVCName)
+	volumeRenderer, err := t.newVolumeRenderer(vmi, launcherImage, imageIDs, namespace, requestedHookSidecarList, backendStoragePVCName)
 	if err != nil {
 		return nil, err
 	}
 
-	compute := t.newContainerSpecRenderer(vmi, volumeRenderer, resources, userId).Render(command)
+	compute := t.newContainerSpecRenderer(vmi, launcherImage, volumeRenderer, resources, userId).Render(command)
 
 	virtLauncherLogVerbosity := t.clusterConfig.GetVirtLauncherVerbosity()
 
@@ -570,7 +615,7 @@ func (t *TemplateService) renderLaunchManifest(vmi *v1.VirtualMachineInstance, i
 		}
 	}
 
-	virtiofsContainers := generateVirtioFSContainers(vmi, t.launcherImage, t.clusterConfig)
+	virtiofsContainers := generateVirtioFSContainers(vmi, launcherImage, t.clusterConfig)
 	if virtiofsContainers != nil {
 		containers = append(containers, virtiofsContainers...)
 	}
@@ -634,7 +679,7 @@ func (t *TemplateService) renderLaunchManifest(vmi *v1.VirtualMachineInstance, i
 
 	var initContainers []k8sv1.Container
 
-	sconsolelogContainer := generateSerialConsoleLogContainer(vmi, t.launcherImage, t.clusterConfig, virtLauncherLogVerbosity)
+	sconsolelogContainer := generateSerialConsoleLogContainer(vmi, launcherImage, t.clusterConfig, virtLauncherLogVerbosity)
 	if sconsolelogContainer != nil {
 		initContainers = append(initContainers, *sconsolelogContainer)
 	}
@@ -647,7 +692,7 @@ func (t *TemplateService) renderLaunchManifest(vmi *v1.VirtualMachineInstance, i
 
 		initContainers = append(
 			initContainers,
-			t.newInitContainerRenderer(vmi,
+			t.newInitContainerRenderer(vmi, launcherImage,
 				initContainerVolumeMount(),
 				initContainerResourceRequirementsForVMI(vmi, v1.ContainerDisk, t.clusterConfig),
 				userId).Render(initContainerCommand))
@@ -922,7 +967,7 @@ func newSidecarContainerRenderer(sidecarName string, vmiSpec *v1.VirtualMachineI
 		sidecarOpts...)
 }
 
-func (t *TemplateService) newInitContainerRenderer(vmiSpec *v1.VirtualMachineInstance, initContainerVolumeMount k8sv1.VolumeMount, initContainerResources k8sv1.ResourceRequirements, userId int64) *ContainerSpecRenderer {
+func (t *TemplateService) newInitContainerRenderer(vmiSpec *v1.VirtualMachineInstance, launcherImage string, initContainerVolumeMount k8sv1.VolumeMount, initContainerResources k8sv1.ResourceRequirements, userId int64) *ContainerSpecRenderer {
 	const containerDisk = "container-disk-binary"
 	cpInitContainerOpts := []Option{
 		WithVolumeMounts(initContainerVolumeMount),
@@ -934,10 +979,10 @@ func (t *TemplateService) newInitContainerRenderer(vmiSpec *v1.VirtualMachineIns
 		cpInitContainerOpts = append(cpInitContainerOpts, WithNonRoot(userId))
 	}
 
-	return NewContainerSpecRenderer(containerDisk, t.launcherImage, t.clusterConfig.GetImagePullPolicy(), cpInitContainerOpts...)
+	return NewContainerSpecRenderer(containerDisk, launcherImage, t.clusterConfig.GetImagePullPolicy(), cpInitContainerOpts...)
 }
 
-func (t *TemplateService) newContainerSpecRenderer(vmi *v1.VirtualMachineInstance, volumeRenderer *VolumeRenderer, resources k8sv1.ResourceRequirements, userId int64) *ContainerSpecRenderer {
+func (t *TemplateService) newContainerSpecRenderer(vmi *v1.VirtualMachineInstance, launcherImage string, volumeRenderer *VolumeRenderer, resources k8sv1.ResourceRequirements, userId int64) *ContainerSpecRenderer {
 	computeContainerOpts := []Option{
 		WithVolumeDevices(volumeRenderer.VolumeDevices()...),
 		WithVolumeMounts(volumeRenderer.Mounts()...),
@@ -960,11 +1005,11 @@ func (t *TemplateService) newContainerSpecRenderer(vmi *v1.VirtualMachineInstanc
 
 	const computeContainerName = "compute"
 	containerRenderer := NewContainerSpecRenderer(
-		computeContainerName, t.launcherImage, t.clusterConfig.GetImagePullPolicy(), computeContainerOpts...)
+		computeContainerName, launcherImage, t.clusterConfig.GetImagePullPolicy(), computeContainerOpts...)
 	return containerRenderer
 }
 
-func (t *TemplateService) newVolumeRenderer(vmi *v1.VirtualMachineInstance, imageIDs map[string]string, namespace string, requestedHookSidecarList hooks.HookSidecarList, backendStoragePVCName string) (*VolumeRenderer, error) {
+func (t *TemplateService) newVolumeRenderer(vmi *v1.VirtualMachineInstance, launcherImage string, imageIDs map[string]string, namespace string, requestedHookSidecarList hooks.HookSidecarList, backendStoragePVCName string) (*VolumeRenderer, error) {
 	imageVolumeFeatureGateEnabled := t.clusterConfig.ImageVolumeEnabled()
 	volumeOpts := []VolumeRendererOption{
 		withVMIConfigVolumes(vmi.Spec.Domain.Devices.Disks, vmi.Spec.Volumes),
@@ -1006,7 +1051,7 @@ func (t *TemplateService) newVolumeRenderer(vmi *v1.VirtualMachineInstance, imag
 	volumeRenderer, err := NewVolumeRenderer(
 		t.clusterConfig,
 		imageVolumeFeatureGateEnabled,
-		t.launcherImage,
+		launcherImage,
 		imageIDs,
 		namespace,
 		t.ephemeralDiskDir,
@@ -1079,6 +1124,7 @@ func (t *TemplateService) RenderHotplugAttachmentPodTemplate(volumes []*v1.Volum
 	runUser := int64(util.NonRootUID)
 	sharedMount := k8sv1.MountPropagationHostToContainer
 	command := []string{"/bin/sh", "-c", "/usr/bin/container-disk --copy-path /path/hp"}
+	launcherImage := t.LauncherImageForVMI(vmi)
 
 	tolerations := append(hotplugPodTolerations(), ownerPod.Spec.Tolerations...)
 
@@ -1106,7 +1152,7 @@ func (t *TemplateService) RenderHotplugAttachmentPodTemplate(volumes []*v1.Volum
 			Containers: []k8sv1.Container{
 				{
 					Name:      hotplugDisk,
-					Image:     t.launcherImage,
+					Image:     launcherImage,
 					Command:   command,
 					Resources: hotplugContainerResourceRequirementsForVMI(t.clusterConfig),
 					SecurityContext: &k8sv1.SecurityContext{
@@ -1212,6 +1258,7 @@ func (t *TemplateService) RenderHotplugAttachmentTriggerPodTemplate(volume *v1.V
 	zero := int64(0)
 	runUser := int64(util.NonRootUID)
 	sharedMount := k8sv1.MountPropagationHostToContainer
+	launcherImage := t.LauncherImageForVMI(vmi)
 	var command []string
 	if tempPod {
 		command = []string{"/bin/bash",
@@ -1249,7 +1296,7 @@ func (t *TemplateService) RenderHotplugAttachmentTriggerPodTemplate(volume *v1.V
 			Containers: []k8sv1.Container{
 				{
 					Name:      hotplugDisk,
-					Image:     t.launcherImage,
+					Image:     launcherImage,
 					Command:   command,
 					Resources: hotplugContainerResourceRequirementsForVMI(t.clusterConfig),
 					SecurityContext: &k8sv1.SecurityContext{
@@ -1762,6 +1809,18 @@ func WithAnnotationsGenerators(generators ...annotationsGenerator) templateServi
 func WithNetTargetAnnotationsGenerator(generator targetAnnotationsGenerator) templateServiceOption {
 	return func(service *TemplateService) {
 		service.netTargetAnnotationsGenerator = generator
+	}
+}
+
+func WithPluginStore(store cache.Store) templateServiceOption {
+	return func(service *TemplateService) {
+		service.pluginStore = store
+		evaluator, err := plugincel.NewEvaluator()
+		if err != nil {
+			log.Log.Errorf("Failed to create CEL evaluator for plugin launcher image selection: %v", err)
+			return
+		}
+		service.celEvaluator = evaluator
 	}
 }
 

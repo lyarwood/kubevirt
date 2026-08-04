@@ -844,7 +844,7 @@ func (c *Controller) syncDynamicAnnotationsAndLabelsToPod(vmi *virtv1.VirtualMac
 }
 
 func (c *Controller) setLauncherContainerInfo(vmi *virtv1.VirtualMachineInstance, curPodImage string) *virtv1.VirtualMachineInstance {
-	if curPodImage != "" && curPodImage != c.templateService.GetLauncherImage() {
+	if curPodImage != "" && curPodImage != c.templateService.LauncherImageForVMI(vmi) {
 		if vmi.Labels == nil {
 			vmi.Labels = map[string]string{}
 		}

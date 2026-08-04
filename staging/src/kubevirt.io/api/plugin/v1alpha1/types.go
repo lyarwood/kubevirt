@@ -61,6 +61,12 @@ type PluginSpec struct {
 	// +optional
 	FailureStrategy FailureStrategy `json:"failureStrategy,omitempty"`
 
+	// LauncherImage overrides the default virt-launcher container image for VMIs
+	// matching this plugin's Condition. When multiple plugins with LauncherImage
+	// match a VMI, the first match in alphabetical plugin name order wins.
+	// +optional
+	LauncherImage string `json:"launcherImage,omitempty"`
+
 	// DomainHooks defines hooks that modify the libvirt domain XML.
 	// Hooks are applied in declaration order within each plugin.
 	// Across plugins, hooks are applied in alphabetical order by plugin name.
