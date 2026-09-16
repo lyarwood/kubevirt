@@ -1387,6 +1387,62 @@ var _ = Describe("Validating VM Admitter", func() {
 			// Ensure CPU has remained nil within the now admitted VMISpec
 			Expect(vm.Spec.Template.Spec.Domain.CPU).To(BeNil())
 		})
+
+		Context("feature gate validation uses the instancetype/preference-applied spec", func() {
+			const testFGName = "test-instancetype-fg"
+
+			BeforeEach(func() {
+				// Use a stub that marks vmCopy with a sentinel value the feature gate checks for
+				stub := instancetypeWebhooks.NewAdmitterStub()
+				stub.ApplyToVMFunc = func(vm *v1.VirtualMachine) (
+					*instancetypev1beta1.VirtualMachineInstancetypeSpec,
+					*instancetypev1beta1.VirtualMachinePreferenceSpec,
+					[]metav1.StatusCause,
+				) {
+					vm.Spec.Template.Spec.Domain.Chassis = &v1.Chassis{Manufacturer: "test-instancetype"}
+					return nil, nil, nil
+				}
+				vmsAdmitter.InstancetypeAdmitter = stub
+			})
+
+			It("should reject a VM when a discontinued feature gate is triggered by the applied instancetype spec", func() {
+				const fgMessage = "discontinued feature detected via instancetype-applied spec"
+				featuregate.RegisterFeatureGate(featuregate.FeatureGate{
+					Name:  testFGName,
+					State: featuregate.Discontinued,
+					VmiSpecUsed: func(spec *v1.VirtualMachineInstanceSpec) bool {
+						return spec.Domain.Chassis != nil && spec.Domain.Chassis.Manufacturer == "test-instancetype"
+					},
+					Message: fgMessage,
+				})
+				DeferCleanup(featuregate.UnregisterFeatureGate, testFGName)
+				enableFeatureGate(testFGName)
+
+				vm := libvmi.NewVirtualMachine(libvmi.New(libvmi.WithNamespace(metav1.NamespaceDefault)))
+				resp := admitVm(vmsAdmitter, vm)
+				Expect(resp.Allowed).To(BeFalse())
+				Expect(resp.Result.Details.Causes).To(HaveLen(1))
+				Expect(resp.Result.Details.Causes[0].Message).To(Equal(fgMessage))
+			})
+
+			It("should warn about a deprecated feature gate triggered by the applied instancetype spec", func() {
+				featuregate.RegisterFeatureGate(featuregate.FeatureGate{
+					Name:  testFGName,
+					State: featuregate.Deprecated,
+					VmiSpecUsed: func(spec *v1.VirtualMachineInstanceSpec) bool {
+						return spec.Domain.Chassis != nil && spec.Domain.Chassis.Manufacturer == "test-instancetype"
+					},
+					Message: "feature gate " + testFGName + " is deprecated",
+				})
+				DeferCleanup(featuregate.UnregisterFeatureGate, testFGName)
+				enableFeatureGate(testFGName)
+
+				vm := libvmi.NewVirtualMachine(libvmi.New(libvmi.WithNamespace(metav1.NamespaceDefault)))
+				resp := admitVm(vmsAdmitter, vm)
+				Expect(resp.Allowed).To(BeTrue())
+				Expect(resp.Warnings).To(ContainElement(HavePrefix("feature gate " + testFGName + " is deprecated")))
+			})
+		})
 	})
 
 	Context("Live update", func() {

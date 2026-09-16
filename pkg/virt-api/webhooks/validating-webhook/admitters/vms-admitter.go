@@ -135,7 +135,7 @@ func (admitter *VMsAdmitter) Admit(ctx context.Context, ar *admissionv1.Admissio
 	if ar.Request.Operation == admissionv1.Create {
 		clusterCfg := admitter.ClusterConfig.GetConfig()
 		if devCfg := clusterCfg.DeveloperConfiguration; devCfg != nil {
-			if causes = featuregate.ValidateFeatureGates(devCfg.FeatureGates, &vm.Spec.Template.Spec); len(causes) > 0 {
+			if causes = featuregate.ValidateFeatureGates(devCfg.FeatureGates, &vmCopy.Spec.Template.Spec); len(causes) > 0 {
 				return webhookutils.ToAdmissionResponse(causes)
 			}
 		}
@@ -152,6 +152,8 @@ func (admitter *VMsAdmitter) Admit(ctx context.Context, ar *admissionv1.Admissio
 		return webhookutils.ToAdmissionResponse(causes)
 	}
 
+	// Use vm (not vmCopy) here: the storage admitter compares against OldObject.Raw which also
+	// lacks instancetype defaults, so vmCopy would produce false spec-change detections.
 	causes, err = storageadmitters.Admit(admitter.VirtClient, ctx, ar.Request, &vm, admitter.ClusterConfig)
 	if err != nil {
 		return webhookutils.ToAdmissionResponseError(err)
@@ -160,6 +162,7 @@ func (admitter *VMsAdmitter) Admit(ctx context.Context, ar *admissionv1.Admissio
 		return webhookutils.ToAdmissionResponse(causes)
 	}
 
+	// Use vm (not vmCopy): volume requests are validated against the user-specified spec.
 	causes, err = admitter.validateVolumeRequests(ctx, &vm)
 	if err != nil {
 		return webhookutils.ToAdmissionResponseError(err)
@@ -169,11 +172,11 @@ func (admitter *VMsAdmitter) Admit(ctx context.Context, ar *admissionv1.Admissio
 
 	isDryRun := ar.Request.DryRun != nil && *ar.Request.DryRun
 	if !isDryRun && ar.Request.Operation == admissionv1.Create {
-		metrics.NewVMCreated(&vm)
+		metrics.NewVMCreated(vmCopy)
 	}
 
-	warnings := warnDeprecatedAPIs(&vm.Spec.Template.Spec, admitter.ClusterConfig)
-	if vm.Spec.Running != nil {
+	warnings := warnDeprecatedAPIs(&vmCopy.Spec.Template.Spec, admitter.ClusterConfig)
+	if vmCopy.Spec.Running != nil {
 		warnings = append(warnings, "spec.running is deprecated, please use spec.runStrategy instead.")
 	}
 
